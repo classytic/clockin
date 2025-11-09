@@ -1,0 +1,68 @@
+{
+  "name": "@classytic/clockin",
+  "version": "1.0.0",
+  "description": "Multi-tenant attendance tracking system with analytics, engagement metrics, streaks, check-in/check-out management, and correction workflows",
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./clockin.d.ts",
+  "exports": {
+    ".": "./src/index.js",
+    "./init": "./src/init.js",
+    "./config": "./src/config.js",
+    "./enums": "./src/enums.js",
+    "./core/*": "./src/core/*.js",
+    "./utils/*": "./src/utils/*.js",
+    "./models/*": "./src/models/*.js",
+    "./schemas/*": "./src/schemas/*.js"
+  },
+  "files": [
+    "src/**/*.js",
+    "clockin.d.ts",
+    "README.md",
+    "INTEGRATION.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "attendance",
+    "check-in",
+    "check-out",
+    "analytics",
+    "engagement",
+    "multi-tenant",
+    "streak",
+    "dashboard",
+    "clockin",
+    "employee-tracking",
+    "member-tracking",
+    "hrm",
+    "nodejs",
+    "mongoose"
+  ],
+  "author": "Sadman Chowdhury",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/classytic/clockin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/classytic/clockin/issues"
+  },
+  "homepage": "https://github.com/classytic/clockin#readme",
+  "peerDependencies": {
+    "mongoose": "^8.0.0"
+  },
+  "devDependencies": {
+    "mongoose": "^8.8.1",
+    "mongoose-aggregate-paginate-v2": "^1.1.4",
+    "mongoose-paginate-v2": "^1.9.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "example:basic": "node test/examples/basic-usage.js",
+    "example:mongoose": "node test/examples/with-mongoose.js",
+    "example:workflow": "node test/examples/full-workflow.js",
+    "test": "npm run example:basic && npm run example:mongoose && npm run example:workflow"
+  }
+}
