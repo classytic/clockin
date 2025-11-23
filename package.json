@@ -4,22 +4,32 @@
   "description": "Multi-tenant attendance tracking system with analytics, engagement metrics, streaks, check-in/check-out management, and correction workflows",
   "type": "module",
   "main": "./src/index.js",
-  "types": "./clockin.d.ts",
+  "types": "./dist/types/index.d.ts",
   "exports": {
-    ".": "./src/index.js",
-    "./init": "./src/init.js",
-    "./config": "./src/config.js",
-    "./enums": "./src/enums.js",
-    "./core/*": "./src/core/*.js",
-    "./utils/*": "./src/utils/*.js",
-    "./models/*": "./src/models/*.js",
-    "./schemas/*": "./src/schemas/*.js"
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./src/index.js"
+    },
+    "./init": {
+      "types": "./dist/types/init.d.ts",
+      "import": "./src/init.js"
+    },
+    "./config": {
+      "types": "./dist/types/config.d.ts",
+      "import": "./src/config.js"
+    },
+    "./enums": {
+      "types": "./dist/types/enums.d.ts",
+      "import": "./src/enums.js"
+    }
   },
   "files": [
     "src/**/*.js",
-    "clockin.d.ts",
+    "!src/**/*.test.js",
+    "!src/**/*.spec.js",
+    "!src/**/__tests__/**",
+    "dist/types/",
     "README.md",
-    "INTEGRATION.md",
     "LICENSE"
   ],
   "keywords": [
@@ -49,20 +59,26 @@
   },
   "homepage": "https://github.com/classytic/clockin#readme",
   "peerDependencies": {
-    "mongoose": "^8.0.0"
+    "mongoose": "^8.0.0 || ^9.0.0"
   },
   "devDependencies": {
-    "mongoose": "^8.8.1",
+    "@types/node": "^22.8.7",
+    "mongoose": "^9.0.0",
     "mongoose-aggregate-paginate-v2": "^1.1.4",
-    "mongoose-paginate-v2": "^1.9.0"
+    "mongoose-paginate-v2": "^1.9.0",
+    "typescript": "^5.6.3"
   },
   "engines": {
     "node": ">=18.0.0"
   },
   "scripts": {
+    "types": "tsc -p tsconfig.types.json",
+    "build": "npm run types",
+    "type-check": "tsc --noEmit test/type-check.ts --skipLibCheck --moduleResolution NodeNext --module NodeNext",
+    "prepublishOnly": "npm run build",
     "example:basic": "node test/examples/basic-usage.js",
     "example:mongoose": "node test/examples/with-mongoose.js",
     "example:workflow": "node test/examples/full-workflow.js",
-    "test": "npm run example:basic && npm run example:mongoose && npm run example:workflow"
+    "test": "npm run type-check && npm run example:basic && npm run example:mongoose && npm run example:workflow"
   }
 }

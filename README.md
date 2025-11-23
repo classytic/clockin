@@ -4,11 +4,11 @@
 [![npm version](https://badge.fury.io/js/@classytic%2Fclockin.svg)](https://www.npmjs.com/package/@classytic/clockin)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A comprehensive, reusable multi-tenant attendance tracking library for Node.js applications.
+A comprehensive, reusable attendance tracking library for Node.js applications. Works for both multi-tenant SaaS and single-tenant applications.
 
 ## 🌟 Features
 
-- **Multi-Tenant**: Secure data isolation for each organization
+- **Multi-Tenant & Single-Tenant**: Secure data isolation with flexible deployment
 - **Storage Optimized**: Monthly aggregation (1 document per member per month, not per check-in)
 - **Real-Time Analytics**: Pre-calculated stats for instant dashboards
 - **Engagement Tracking**: Automatic member engagement classification
@@ -22,13 +22,29 @@ A comprehensive, reusable multi-tenant attendance tracking library for Node.js a
 npm install @classytic/clockin
 ```
 
+**Requirements:**
+- Node.js >= 18.0.0
+- Mongoose >= 8.0.0 (supports both v8 and v9)
+
 ```javascript
 // Bootstrap (call once at app startup)
 import { initializeAttendance } from '@classytic/clockin';
 import Attendance from './models/attendance.model.js';
 
+// Multi-tenant (default)
 initializeAttendance({ AttendanceModel: Attendance });
+
+// Single-tenant (auto-inject organizationId)
+initializeAttendance({
+  AttendanceModel: Attendance,
+  singleTenant: {
+    organizationId: process.env.ORGANIZATION_ID,
+    autoInject: true
+  }
+});
 ```
+
+**📘 Single-Tenant Guide:** See [docs/SINGLE_TENANT.md](https://github.com/classytic/clockin/blob/main/docs/SINGLE_TENANT.md) for complete single-tenant setup.
 
 ## 🚀 Quick Start
 

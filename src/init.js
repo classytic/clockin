@@ -47,8 +47,10 @@
 import { attendance } from './attendance.orchestrator.js';
 import { registerConfig, getConfig } from './configs/index.js';
 import logger, { setLogger } from './utils/logger.js';
+import mongoose from 'mongoose';
 
 let _initialized = false;
+let _singleTenantConfig = null;
 
 /**
  * Initialize attendance framework globally
@@ -57,11 +59,23 @@ let _initialized = false;
  * @param {Object} options - Initialization options
  * @param {Model} options.AttendanceModel - Your Attendance model (required)
  * @param {Object} options.configs - Custom configs per target model (optional)
+ * @param {Object} options.singleTenant - Single-tenant configuration (optional)
+ * @param {String} options.singleTenant.organizationId - Fixed organization ID for single-tenant apps
+ * @param {Boolean} options.singleTenant.autoInject - Auto-inject organizationId if missing (default: true)
  * @param {Object} options.logger - Optional custom logger (pino, winston, etc)
  * @throws {Error} If called multiple times or with invalid config
  *
  * @example Basic (uses library defaults)
  * initializeAttendance({ AttendanceModel: Attendance });
+ *
+ * @example Single-Tenant Mode
+ * initializeAttendance({
+ *   AttendanceModel: Attendance,
+ *   singleTenant: {
+ *     organizationId: '000000000000000000000001',
+ *     autoInject: true  // Auto-add organizationId to members without it
+ *   }
+ * });
  *
  * @example Advanced (custom configs)
  * initializeAttendance({
@@ -72,7 +86,7 @@ let _initialized = false;
  *   }
  * });
  */
-export function initializeAttendance({ AttendanceModel, configs = null, logger: customLogger }) {
+export function initializeAttendance({ AttendanceModel, configs = null, singleTenant = null, logger: customLogger }) {
   // Allow users to inject their own logger
   if (customLogger) {
     setLogger(customLogger);
@@ -103,13 +117,34 @@ export function initializeAttendance({ AttendanceModel, configs = null, logger: 
     });
   }
 
+  // Configure single-tenant mode if provided
+  if (singleTenant) {
+    if (!singleTenant.organizationId) {
+      throw new Error('singleTenant.organizationId is required');
+    }
+
+    const orgId = typeof singleTenant.organizationId === 'string'
+      ? new mongoose.Types.ObjectId(singleTenant.organizationId)
+      : singleTenant.organizationId;
+
+    _singleTenantConfig = {
+      organizationId: orgId,
+      autoInject: singleTenant.autoInject !== false,  // Default true
+    };
+
+    logger.info('Single-tenant mode enabled', {
+      organizationId: orgId.toString(),
+      autoInject: _singleTenantConfig.autoInject,
+    });
+  }
+
   // Configure global orchestrator
   attendance.configure({ AttendanceModel });
 
   _initialized = true;
   logger.info('Attendance Framework initialized', {
     entities: ['Membership', 'Employee'],
-    mode: configs ? 'custom' : 'auto (smart defaults)'
+    mode: singleTenant ? 'single-tenant' : (configs ? 'custom' : 'auto (smart defaults)')
   });
 }
 
@@ -122,12 +157,44 @@ export function isInitialized() {
 }
 
 /**
+ * Get single-tenant configuration
+ * @returns {Object|null} Single-tenant config or null if multi-tenant
+ */
+export function getSingleTenantConfig() {
+  return _singleTenantConfig;
+}
+
+/**
+ * Auto-inject organizationId for single-tenant apps
+ * @param {Object} member - Member/entity document
+ * @returns {Object} Member with organizationId injected if needed
+ */
+export function withOrganizationId(member) {
+  if (!_singleTenantConfig || !_singleTenantConfig.autoInject) {
+    return member;
+  }
+
+  // If member already has organizationId, use it
+  if (member.organizationId) {
+    return member;
+  }
+
+  // Auto-inject for single-tenant mode
+  return {
+    ...member,
+    _id: member._id,
+    organizationId: _singleTenantConfig.organizationId,
+  };
+}
+
+/**
  * Reset initialization state
  * ONLY for testing purposes
  * @private
  */
 export function _resetForTesting() {
   _initialized = false;
+  _singleTenantConfig = null;
   logger.warn('Attendance Framework reset (testing only)');
 }
 

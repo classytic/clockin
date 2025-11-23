@@ -354,35 +354,38 @@ currentSessionSchema.virtual('durationMinutes').get(function() {
  * Validation: Ensure currentSession state consistency
  * - If isActive = true, must have checkInId, checkInTime, and method
  * - If isActive = false, must have null checkInId and checkInTime
+ *
+ * Updated for Mongoose v9 compatibility:
+ * - Removed next() callback (no longer supported in v9)
+ * - Use throw instead of next(err) for errors
+ * - Use return instead of return next()
  */
-currentSessionSchema.pre('validate', function(next) {
+currentSessionSchema.pre('validate', function() {
   // Skip validation if parent document is being deleted
   if (this.ownerDocument && this.ownerDocument().$isDeleted) {
-    return next();
+    return;
   }
 
   if (this.isActive) {
     // Active session requires all fields
     if (!this.checkInId) {
-      return next(new Error('Active currentSession requires checkInId'));
+      throw new Error('Active currentSession requires checkInId');
     }
     if (!this.checkInTime) {
-      return next(new Error('Active currentSession requires checkInTime'));
+      throw new Error('Active currentSession requires checkInTime');
     }
     if (!this.method) {
-      return next(new Error('Active currentSession requires method'));
+      throw new Error('Active currentSession requires method');
     }
   } else {
     // Inactive session must have null fields
     if (this.checkInId) {
-      return next(new Error('Inactive currentSession must have null checkInId'));
+      throw new Error('Inactive currentSession must have null checkInId');
     }
     if (this.checkInTime) {
-      return next(new Error('Inactive currentSession must have null checkInTime'));
+      throw new Error('Inactive currentSession must have null checkInTime');
     }
   }
-
-  next();
 });
 
 /**
