@@ -1,6 +1,6 @@
 {
   "name": "@classytic/clockin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Multi-tenant attendance tracking system with analytics, engagement metrics, streaks, check-in/check-out management, and correction workflows",
   "type": "module",
   "main": "./src/index.js",
