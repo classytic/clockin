@@ -1,456 +1,149 @@
-# 🔗 ClockIn Library Integration Guide
+# 🔗 ClockIn v2 Integration Guide (Mongoose Plugin-Style)
 
-## Attendance Model Integration
+This guide shows the recommended “plug it into any schema” setup:
 
-The ClockIn library provides a complete attendance tracking system for employees, members, and other entities. It includes a ready-to-use AttendanceModel, but you can also use your own custom model.
-
----
-
-## 📋 **Integration Options**
-
-### **Option 1: Use Library-Provided Model (Recommended)**
-
-The simplest approach is to use the built-in AttendanceModel:
-
-```javascript
-// bootstrap/attendance.js
-import { initializeAttendance } from '@classytic/clockin';
-import AttendanceModel from '@classytic/clockin/models/attendance.model.js';
-
-initializeAttendance({
-  AttendanceModel: AttendanceModel, // ✅ Use library-provided model
-  logger: myLogger // Optional custom logger
-});
-```
-
-**Benefits:**
-- ✅ Zero schema configuration
-- ✅ Optimized storage design (1 doc/member/month)
-- ✅ Built-in work days calculation
-- ✅ Correction request system included
-- ✅ Analytics-ready distribution tracking
-- ✅ **Compatible with @classytic/payroll** payroll system
+1) **Create an Attendance model** (monthly aggregation)  
+2) **Embed ClockIn fields into your target schema** (Member/Employee/Student/…)  
+3) **Build a ClockIn instance**  
+4) Use `checkIn`, `checkOut`, and `analytics`
 
 ---
 
-### **Option 2: Use Custom Model**
+## 1) Create the Attendance model
 
-If you need custom fields or modifications, implement the required schema:
+ClockIn stores attendance as **one document per member per month**.
 
-```javascript
-// models/CustomAttendance.js
+```ts
 import mongoose from 'mongoose';
+import { createAttendanceSchema } from '@classytic/clockin';
 
-const customAttendanceSchema = new mongoose.Schema({
-  // ... your custom schema (see requirements below)
-});
-
-export const CustomAttendance = mongoose.model('CustomAttendance', customAttendanceSchema);
+export const Attendance = mongoose.model(
+  'Attendance',
+  createAttendanceSchema({
+    ttlDays: 730, // set 0 to disable TTL
+    // additionalFields: { source: String } // optional extension point
+  })
+);
 ```
 
-```javascript
-// bootstrap/attendance.js
-import { initializeAttendance } from '@classytic/clockin';
-import { CustomAttendance } from './models/CustomAttendance.js';
-
-initializeAttendance({
-  AttendanceModel: CustomAttendance, // ✅ Use your custom model
-});
-```
+**Key fields (inside the attendance record)**
+- `tenantId` (organizationId)
+- `targetModel` (e.g. `'Membership'`)
+- `targetId` (member `_id`)
+- `year`, `month`
+- `checkIns[]` with timestamps + metadata
 
 ---
 
-## 🎯 **Custom Model Requirements**
+## 2) Add ClockIn fields to your member/employee schema
 
-If using a custom AttendanceModel, it **MUST** include these fields:
+ClockIn works with **any Mongoose model** as long as it has:
+- `organizationId` (for tenant isolation)
+- `attendanceEnabled`, `attendanceStats`, `currentSession` (provided by `commonAttendanceFields`)
 
-### **Core Fields (Required)**
+```ts
+import mongoose from 'mongoose';
+import { commonAttendanceFields, applyAttendanceIndexes } from '@classytic/clockin';
 
-```javascript
-{
-  // Multi-tenancy (REQUIRED)
-  tenantId: ObjectId,             // Organization ID
+const membershipSchema = new mongoose.Schema(
+  {
+    organizationId: { type: mongoose.Schema.Types.ObjectId, required: true, index: true },
+    customer: { name: String, email: String },
+    status: { type: String, default: 'active' },
 
-  // Polymorphic target (REQUIRED)
-  targetModel: String,            // Model name: 'Employee' | 'Membership' | 'User'
-  targetId: ObjectId,             // Reference to target entity
-
-  // Time period (REQUIRED - one document per month!)
-  year: Number,                   // Year (e.g., 2024)
-  month: Number,                  // Month (1-12)
-
-  // Check-in storage (REQUIRED)
-  checkIns: [{                    // Array of check-in entries
-    date: Date,                   // Check-in date/time
-    checkOutTime: Date,           // Check-out date/time (optional)
-    type: String,                 // 'full_day' | 'half_day' | 'paid_leave' | 'overtime'
-    location: String,             // Check-in location (optional)
-    notes: String,                // Admin notes (optional)
-  }],
-
-  // Monthly totals (REQUIRED for performance)
-  monthlyTotal: Number,           // Total check-ins this month
-  uniqueDaysVisited: Number,      // Unique days with check-ins
-
-  // Work days tracking (REQUIRED for HRM integration!)
-  fullDaysCount: Number,          // Count of full work days
-  halfDaysCount: Number,          // Count of half work days
-  paidLeaveDaysCount: Number,     // Count of paid leave days
-  overtimeDaysCount: Number,      // Count of overtime days
-  totalWorkDays: Number,          // Calculated total (decimal)
-                                  // Formula: fullDays + (halfDays * 0.5) + paidLeave
-
-  // Analytics (OPTIONAL but recommended)
-  timeSlotDistribution: {
-    early_morning: Number,
-    morning: Number,
-    afternoon: Number,
-    evening: Number,
-    night: Number,
+    ...commonAttendanceFields,
   },
-
-  dayOfWeekDistribution: Map<Number, Number>, // 0=Sunday, 6=Saturday
-}
-```
-
-### **Required Indexes (CRITICAL!)**
-
-```javascript
-// Unique constraint: One document per member per month
-attendanceSchema.index(
-  { tenantId: 1, targetId: 1, year: 1, month: 1 },
-  { unique: true }
+  { timestamps: true }
 );
 
-// Fast tenant-scoped queries
-attendanceSchema.index({ tenantId: 1, year: 1, month: 1 });
+applyAttendanceIndexes(membershipSchema, { tenantField: 'organizationId' });
 
-// Polymorphic reference queries
-attendanceSchema.index({ targetModel: 1, targetId: 1, year: 1, month: 1 });
-```
-
-### **Required Methods**
-
-Your model **MUST** implement:
-
-#### **recalculateWorkDays()**
-
-Recalculates work days based on check-ins:
-
-```javascript
-attendanceSchema.methods.recalculateWorkDays = function() {
-  const counts = { full: 0, half: 0, paidLeave: 0, overtime: 0 };
-
-  this.checkIns.forEach(entry => {
-    switch (entry.type) {
-      case 'full_day': counts.full++; break;
-      case 'half_day': counts.half++; break;
-      case 'paid_leave': counts.paidLeave++; break;
-      case 'overtime': counts.overtime++; break;
-    }
-  });
-
-  this.fullDaysCount = counts.full;
-  this.halfDaysCount = counts.half;
-  this.paidLeaveDaysCount = counts.paidLeave;
-  this.overtimeDaysCount = counts.overtime;
-
-  // CRITICAL FORMULA (used by HRM payroll!)
-  this.totalWorkDays = counts.full + (counts.half * 0.5) + counts.paidLeave;
-};
+export const Membership = mongoose.model('Membership', membershipSchema);
 ```
 
 ---
 
-## 🏗️ **Complete Custom Schema Example**
+## 3) Build ClockIn (recommended)
 
-```javascript
-// models/CustomAttendance.js
-import mongoose from 'mongoose';
+```ts
+import { ClockIn, loggingPlugin } from '@classytic/clockin';
+import { Attendance } from './attendance.js';
+import { Membership } from './membership.js';
 
-const { Schema } = mongoose;
-
-const checkInEntrySchema = new Schema({
-  date: { type: Date, required: true },
-  checkOutTime: { type: Date },
-  type: {
-    type: String,
-    enum: ['full_day', 'half_day', 'paid_leave', 'overtime', 'absent'],
-    default: 'full_day'
-  },
-  location: { type: String },
-  notes: { type: String },
-}, { _id: true });
-
-const customAttendanceSchema = new Schema({
-  // Multi-tenancy
-  tenantId: {
-    type: Schema.Types.ObjectId,
-    ref: 'Organization',
-    required: true,
-    index: true,
-  },
-
-  // Polymorphic target
-  targetModel: {
-    type: String,
-    required: true,
-    enum: ['Employee', 'Membership', 'User'],
-  },
-  targetId: {
-    type: Schema.Types.ObjectId,
-    required: true,
-    refPath: 'targetModel',
-    index: true,
-  },
-
-  // Time period
-  year: {
-    type: Number,
-    required: true,
-    index: true,
-  },
-  month: {
-    type: Number,
-    required: true,
-    min: 1,
-    max: 12,
-    index: true,
-  },
-
-  // Check-ins (array of entries)
-  checkIns: {
-    type: [checkInEntrySchema],
-    default: [],
-  },
-
-  // Monthly totals
-  monthlyTotal: {
-    type: Number,
-    default: 0,
-    min: 0,
-  },
-  uniqueDaysVisited: {
-    type: Number,
-    default: 0,
-    min: 0,
-  },
-
-  // Work days tracking (HRM integration)
-  fullDaysCount: {
-    type: Number,
-    default: 0,
-    min: 0,
-  },
-  halfDaysCount: {
-    type: Number,
-    default: 0,
-    min: 0,
-  },
-  paidLeaveDaysCount: {
-    type: Number,
-    default: 0,
-    min: 0,
-  },
-  overtimeDaysCount: {
-    type: Number,
-    default: 0,
-    min: 0,
-  },
-  totalWorkDays: {
-    type: Number,
-    default: 0,
-    min: 0,
-  },
-
-  // Analytics (optional)
-  timeSlotDistribution: {
-    early_morning: { type: Number, default: 0 },
-    morning: { type: Number, default: 0 },
-    afternoon: { type: Number, default: 0 },
-    evening: { type: Number, default: 0 },
-    night: { type: Number, default: 0 },
-  },
-
-  dayOfWeekDistribution: {
-    type: Map,
-    of: Number,
-    default: () => new Map(),
-  },
-
-  // Custom fields (add your own!)
-  customField1: String,
-  customField2: Number,
-}, {
-  timestamps: true
-});
-
-// CRITICAL INDEXES
-customAttendanceSchema.index(
-  { tenantId: 1, targetId: 1, year: 1, month: 1 },
-  { unique: true }
-);
-
-customAttendanceSchema.index({ tenantId: 1, year: 1, month: 1 });
-customAttendanceSchema.index({ targetModel: 1, targetId: 1, year: 1, month: 1 });
-
-// REQUIRED METHOD
-customAttendanceSchema.methods.recalculateWorkDays = function() {
-  const counts = { full: 0, half: 0, paidLeave: 0, overtime: 0 };
-
-  this.checkIns.forEach(entry => {
-    switch (entry.type) {
-      case 'full_day': counts.full++; break;
-      case 'half_day': counts.half++; break;
-      case 'paid_leave': counts.paidLeave++; break;
-      case 'overtime': counts.overtime++; break;
-    }
-  });
-
-  this.fullDaysCount = counts.full;
-  this.halfDaysCount = counts.half;
-  this.paidLeaveDaysCount = counts.paidLeave;
-  this.overtimeDaysCount = counts.overtime;
-
-  // CRITICAL: HRM payroll uses this value!
-  this.totalWorkDays = counts.full + (counts.half * 0.5) + counts.paidLeave;
-};
-
-export const CustomAttendance = mongoose.model('CustomAttendance', customAttendanceSchema);
+export const clockin = ClockIn
+  .create()
+  .withModels({ Attendance, Membership })
+  .withPlugin(loggingPlugin())
+  .build();
 ```
 
 ---
 
-## 🔗 **HRM Library Integration**
+## 4) Multi-tenant usage
 
-The Attendance library is designed to work seamlessly with the **@classytic/payroll** library for payroll processing.
+For multi-tenant SaaS, always pass `organizationId` in the operation `context` (or ensure it exists on the member document).
 
-### **How HRM Uses Attendance Data**
+```ts
+const member = await Membership.findOne({ _id: memberId, organizationId });
 
-When HRM processes employee payroll, it:
-
-1. **Queries attendance** for the pay period:
-   ```javascript
-   const attendance = await AttendanceModel.findOne({
-     tenantId: organizationId,
-     targetId: employeeId,
-     targetModel: 'Employee',
-     year: 2024,
-     month: 3
-   });
-   ```
-
-2. **Reads `totalWorkDays`** (pre-calculated by Attendance library)
-
-3. **Calculates deductions**:
-   ```javascript
-   const totalDaysInMonth = 31;
-   const absentDays = totalDaysInMonth - attendance.totalWorkDays;
-   const deduction = absentDays * dailyRate;
-   ```
-
-### **Integration Example**
-
-```javascript
-// bootstrap/index.js
-import { initializeAttendance } from '@classytic/clockin';
-import { initializeHRM } from '@classytic/payroll';
-import AttendanceModel from '@classytic/clockin/models/attendance.model.js';
-import Employee from './models/Employee.js';
-import PayrollRecord from './models/PayrollRecord.js';
-import Transaction from './models/Transaction.js';
-
-// 1. Initialize Attendance
-initializeAttendance({
-  AttendanceModel: AttendanceModel,
-});
-
-// 2. Initialize HRM with Attendance integration
-initializeHRM({
-  EmployeeModel: Employee,
-  PayrollRecordModel: PayrollRecord,
-  TransactionModel: Transaction,
-  AttendanceModel: AttendanceModel,  // ✅ Enable payroll deductions
+const result = await clockin.checkIn.record({
+  member,
+  targetModel: 'Membership',
+  data: { method: 'rfid' },
+  context: { organizationId, userId },
 });
 ```
 
-**See also:** [HRM Integration Guide](../hrm/INTEGRATION.md) for detailed HRM-Attendance contract.
+---
+
+## 5) Single-tenant usage
+
+Single-tenant is just “one fixed orgId”. You can:
+- store `organizationId` as a constant default on your model, OR
+- always pass `context.organizationId`
+
+See: `docs/SINGLE_TENANT.md`
 
 ---
 
-## 🎯 **Storage Optimization**
+## 6) Analytics
 
-The Attendance library uses **monthly aggregation** for optimal storage:
+```ts
+const dashboard = await clockin.analytics.dashboard({
+  MemberModel: Membership,
+  organizationId,
+});
 
-### **Why One Document Per Month?**
-
-```javascript
-// ❌ BAD: One document per check-in
-// 1 employee with 20 check-ins/month = 20 documents
-CheckIn { employeeId, date, type }
-CheckIn { employeeId, date, type }
-// ... 18 more documents
-
-// ✅ GOOD: One document per month
-// 1 employee with 20 check-ins/month = 1 document
-Attendance {
-  employeeId,
-  year: 2024,
-  month: 3,
-  checkIns: [
-    { date, type },
-    { date, type },
-    // ... 18 more entries
-  ],
-  totalWorkDays: 18.5  // Pre-calculated!
-}
+const history = await clockin.analytics.history({
+  memberId,
+  organizationId,
+  targetModel: 'Membership',
+});
 ```
 
-**Benefits:**
-- 📉 **95% storage reduction** (1 doc/month vs 20-30 docs/month)
-- ⚡ **Faster queries** (single indexed lookup vs array scan)
-- 🎯 **Pre-calculated totals** for instant reporting
-- 💰 **Lower database costs**
+---
+
+## 7) Critical pitfalls (read this)
+
+### A) Your Mongoose model **must be registered**
+
+Internally, ClockIn updates members via `mongoose.model(targetModel)`.
+
+So if you call `targetModel: 'Membership'`, you must have:
+
+```ts
+mongoose.model('Membership', membershipSchema);
+```
+
+### B) Indexing matters
+
+ClockIn is designed for scale—make sure to apply:
+- `createAttendanceSchema()` indexes (already included)
+- `applyAttendanceIndexes()` on member/employee schemas
 
 ---
 
-## ✅ **Compatibility Checklist**
+## 8) Next docs
 
-Before using a custom AttendanceModel, verify:
-
-### **Schema Requirements**
-- [ ] Has `tenantId` field (ObjectId)
-- [ ] Has `targetModel` field (String, with 'Employee')
-- [ ] Has `targetId` field (ObjectId, refPath: targetModel)
-- [ ] Has `year` field (Number)
-- [ ] Has `month` field (Number, 1-12)
-- [ ] Has `checkIns` array with `date`, `type`, `checkOutTime`
-- [ ] Has `monthlyTotal` field (Number)
-- [ ] Has `uniqueDaysVisited` field (Number)
-- [ ] Has `fullDaysCount` field (Number)
-- [ ] Has `halfDaysCount` field (Number)
-- [ ] Has `paidLeaveDaysCount` field (Number)
-- [ ] Has `totalWorkDays` field (Number, decimal)
-
-### **Indexes**
-- [ ] **Unique compound index** on `(tenantId, targetId, year, month)`
-- [ ] Index on `(tenantId, year, month)` for fast queries
-- [ ] Index on `(targetModel, targetId, year, month)`
-
-### **Methods**
-- [ ] Implements `recalculateWorkDays()` method
-- [ ] Formula: `fullDays + (halfDays × 0.5) + paidLeaveDays`
-
-### **HRM Integration (if using)**
-- [ ] `totalWorkDays` is calculated correctly before payroll runs
-- [ ] `targetModel` includes 'Employee' in enum values
-
----
-
-## 📖 **Related Documentation**
-
-- [Attendance Library README](./README.md)
-- [Attendance Model Source](./models/attendance.model.js)
-- [Check-in Manager](./core/check-in.manager.js)
-- [HRM Integration Guide](../hrm/INTEGRATION.md)
-- [Analytics Manager](./core/analytics.manager.js)
+- `docs/SCHEMAS_AND_MODELS.md`
+- `docs/PLUGINS_AND_EVENTS.md`

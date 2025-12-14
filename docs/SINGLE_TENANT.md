@@ -1,180 +1,80 @@
-# Single-Tenant Usage Guide
+# Single-Tenant Guide (v2)
 
-@classytic/clockin was designed for multi-tenant SaaS applications, but it works perfectly for single-tenant apps too! Here's how to use it.
+For single-tenant apps, **you don't need `organizationId` at all**. Just call `.forSingleTenant()` and the library handles it transparently.
 
-## 🎯 Quick Start (Recommended)
+## Quick Setup
 
-### Option 1: Use Single-Tenant Mode (Auto-Inject)
-
-The easiest way - let the library handle organizationId automatically:
-
-```javascript
-// bootstrap/attendance.js
-import { initializeAttendance } from '@classytic/clockin';
-import Attendance from './models/attendance.model.js';
-
-initializeAttendance({
-  AttendanceModel: Attendance,
-  singleTenant: {
-    organizationId: process.env.ORGANIZATION_ID || '000000000000000000000001',
-    autoInject: true  // Automatically adds organizationId to members
-  }
-});
-```
-
-**Benefits:**
-- ✅ No schema changes needed
-- ✅ Works with existing models
-- ✅ Automatic organizationId injection
-- ✅ Future-proof if you scale to multi-tenant
-
-### Option 2: Add organizationId to Schema (Explicit)
-
-Add a constant organizationId field to your model:
-
-```javascript
+```ts
 import mongoose from 'mongoose';
-import { attendanceStatsSchema } from '@classytic/clockin/schemas';
+import { ClockIn, createAttendanceSchema, commonAttendanceFields } from '@classytic/clockin';
 
-const FIXED_ORG_ID = new mongoose.Types.ObjectId('000000000000000000000001');
-
+// 1. Your member schema - NO organizationId needed!
 const membershipSchema = new mongoose.Schema({
-  email: { type: String, required: true },
-  name: { type: String, required: true },
+  customer: { name: String, email: String },
+  status: { type: String, default: 'active' },
+  ...commonAttendanceFields,
+}, { timestamps: true });
 
-  // Fixed organizationId for single-tenant
-  organizationId: {
-    type: mongoose.Schema.Types.ObjectId,
-    required: true,
-    default: () => FIXED_ORG_ID,
-    index: true,
-  },
+const Membership = mongoose.model('Membership', membershipSchema);
+const Attendance = mongoose.model('Attendance', createAttendanceSchema());
 
-  // Required by clockin
-  attendanceStats: attendanceStatsSchema,
-  attendanceEnabled: { type: Boolean, default: true },
-});
-
-export default mongoose.model('Membership', membershipSchema);
+// 2. Enable single-tenant mode
+const clockin = ClockIn
+  .create()
+  .withModels({ Attendance, Membership })
+  .forSingleTenant()  // ← That's it!
+  .build();
 ```
 
-Then initialize normally:
+## Usage
 
-```javascript
-initializeAttendance({ AttendanceModel: Attendance });
-```
+No `organizationId` in context either:
 
-## 🚀 Usage
+```ts
+const member = await Membership.findOne({ 'customer.email': 'john@example.com' });
 
-With either option, usage is exactly the same:
-
-```javascript
-import { attendance } from '@classytic/clockin';
-
-// Find member
-const member = await Membership.findOne({ email: 'john@example.com' });
-
-// Check-in (organizationId handled automatically)
-const result = await attendance.checkIn({
+// Just check in - no organizationId needed anywhere
+const result = await clockin.checkIn.record({
   member,
   targetModel: 'Membership',
   data: { method: 'qr_code' },
-  context: { userId: staff._id },
-});
-
-// Dashboard
-const dashboard = await attendance.dashboard({
-  MemberModel: Membership,
-  organizationId: member.organizationId,  // Use from member or env var
-  startDate: new Date('2025-01-01'),
 });
 ```
 
-## 🔄 Migrating Existing Data
+## How It Works
 
-If you already have members without organizationId:
+When you call `.forSingleTenant()`:
 
-```javascript
-import mongoose from 'mongoose';
-import Membership from './models/membership.model.js';
+1. ClockIn uses an internal default tenant ID (`000000000000000000000001`)
+2. All attendance records are scoped to this tenant automatically
+3. You never have to pass or store `organizationId`
 
-const FIXED_ORG_ID = new mongoose.Types.ObjectId('000000000000000000000001');
+## Custom Tenant ID (Optional)
 
-// One-time migration
-async function migrateToSingleTenant() {
-  const result = await Membership.updateMany(
-    { organizationId: { $exists: false } },
-    { $set: { organizationId: FIXED_ORG_ID } }
-  );
+If you want a specific tenant ID (e.g., for data migration):
 
-  console.log(`✅ Updated ${result.modifiedCount} members`);
-}
-
-await migrateToSingleTenant();
+```ts
+.forSingleTenant({ organizationId: 'my-company-id' })
 ```
 
-## ⚙️ Environment Configuration
+## When to Use Multi-Tenant Instead
 
-Store your organization ID in environment variables:
+Use the default multi-tenant mode if:
 
-```bash
-# .env
-ORGANIZATION_ID=000000000000000000000001
+- You're building a SaaS with multiple organizations
+- Different users belong to different tenants
+- You need strict data isolation between tenants
+
+In multi-tenant mode, `organizationId` is required (on the member or in context) to ensure proper data isolation.
+
+## Migrating from Multi-Tenant to Single-Tenant
+
+If you previously had `organizationId` on your schema and want to simplify:
+
+```ts
+// Your schema no longer needs organizationId
+// Just add .forSingleTenant() to your ClockIn builder
+
+// Existing attendance records will still work - they have tenantId stored
+// New records will use the default tenant ID
 ```
-
-```javascript
-// config/constants.js
-import mongoose from 'mongoose';
-
-export const ORGANIZATION_ID = new mongoose.Types.ObjectId(
-  process.env.ORGANIZATION_ID || '000000000000000000000001'
-);
-```
-
-## 🎓 Why organizationId is Required
-
-The library was built for multi-tenant SaaS where:
-- Multiple organizations use the same database
-- Data MUST be isolated per organization
-- All queries filter by organizationId for security
-
-For single-tenant:
-- You still need the field (for compatibility)
-- But it's just a constant value
-- No real overhead - just another field
-- Makes future scaling easier
-
-## 📊 Comparison
-
-| Approach | Pros | Cons |
-|----------|------|------|
-| **Auto-Inject** | No schema changes, Works with existing data | Runtime overhead (minimal) |
-| **Schema Default** | Explicit, No runtime overhead | Requires schema modification |
-
-Both work perfectly! Choose based on your preference.
-
-## ✅ Recommended: Auto-Inject for Single-Tenant
-
-For most single-tenant apps, use auto-inject mode:
-
-```javascript
-initializeAttendance({
-  AttendanceModel: Attendance,
-  singleTenant: {
-    organizationId: process.env.ORGANIZATION_ID,
-    autoInject: true
-  }
-});
-```
-
-This gives you:
-- 🚀 Zero schema changes
-- 🔒 Security by default
-- 📈 Easy to scale later
-- 🎯 Simple configuration
-
-## 🆘 Need Help?
-
-- [Main Documentation](./README.md)
-- [GitHub Issues](https://github.com/classytic/clockin/issues)
-- [Integration Guide](./INTEGRATION.md)

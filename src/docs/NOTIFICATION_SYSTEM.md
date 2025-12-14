@@ -1,8 +1,15 @@
-# 🔔 Notification System Architecture Guide
+# 🔔 Notification / Event Integrations (Deprecated doc)
 
 ## How Notification Services Work in Production
 
-This guide explains how modern notification systems work and how to integrate them with the attendance library.
+This file describes notification/event integrations from the older architecture.
+
+**Updated v2 docs:**
+- `docs/PLUGINS_AND_EVENTS.md`
+
+You can still use the concepts in this file (queues, email/SMS/push), but the integration points in v2 are:
+- `clockin.on(...)` events
+- Plugin hooks (`afterCheckIn`, `onMilestone`, etc.)
 
 > **Note**: This is an **optional feature guide**. The attendance library works perfectly without notifications. This document shows you how to add email/SMS/push notifications if you need them in your application.
 
