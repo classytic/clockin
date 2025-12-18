@@ -84,6 +84,21 @@ export interface CheckOutRecordedEvent extends BaseEvent {
   };
 }
 
+/** Check-out failed event */
+export interface CheckOutFailedEvent extends BaseEvent {
+  type: 'checkOut:failed';
+  data: {
+    member?: EventMemberInfo;
+    targetModel: string;
+    checkInId?: ObjectId;
+    error: {
+      code: string;
+      message: string;
+    };
+    context?: OperationContext;
+  };
+}
+
 /** Milestone achieved event */
 export interface MilestoneAchievedEvent extends BaseEvent {
   type: 'milestone:achieved';
@@ -130,6 +145,16 @@ export interface MemberAtRiskEvent extends BaseEvent {
   };
 }
 
+/** Member inactive event */
+export interface MemberInactiveEvent extends BaseEvent {
+  type: 'member:inactive';
+  data: {
+    member: EventMemberInfo;
+    stats: AttendanceStats;
+    daysSinceLastVisit: number;
+  };
+}
+
 /** Session expired event */
 export interface SessionExpiredEvent extends BaseEvent {
   type: 'session:expired';
@@ -146,10 +171,12 @@ export type ClockInEventPayload =
   | CheckInRecordedEvent
   | CheckInFailedEvent
   | CheckOutRecordedEvent
+  | CheckOutFailedEvent
   | MilestoneAchievedEvent
   | EngagementChangedEvent
   | StatsUpdatedEvent
   | MemberAtRiskEvent
+  | MemberInactiveEvent
   | SessionExpiredEvent;
 
 /** Event type names */
@@ -160,10 +187,12 @@ export interface ClockInEventMap {
   'checkIn:recorded': CheckInRecordedEvent;
   'checkIn:failed': CheckInFailedEvent;
   'checkOut:recorded': CheckOutRecordedEvent;
+  'checkOut:failed': CheckOutFailedEvent;
   'milestone:achieved': MilestoneAchievedEvent;
   'engagement:changed': EngagementChangedEvent;
   'stats:updated': StatsUpdatedEvent;
   'member:atRisk': MemberAtRiskEvent;
+  'member:inactive': MemberInactiveEvent;
   'session:expired': SessionExpiredEvent;
 }
 

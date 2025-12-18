@@ -70,7 +70,37 @@ export {
   type ClockInPlugin,
   type PluginContext,
   type PluginHooks,
+  type BeforeCheckInHookData,
+  type BeforeCheckOutHookData,
+  type CheckInHookData,
+  type CheckOutHookData,
+  type MilestoneHookData,
+  type EngagementHookData,
 } from './core/plugin.js';
+
+// ============================================================================
+// EVENTS - Type-safe event bus
+// ============================================================================
+
+export {
+  EventBus,
+  createEventBus,
+  type ClockInEventPayload,
+  type ClockInEventMap,
+  type ClockInEventType,
+  type BaseEvent,
+  type EventMemberInfo,
+  type CheckInRecordedEvent,
+  type CheckInFailedEvent,
+  type CheckOutRecordedEvent,
+  type CheckOutFailedEvent,
+  type MilestoneAchievedEvent,
+  type EngagementChangedEvent,
+  type StatsUpdatedEvent,
+  type MemberAtRiskEvent,
+  type MemberInactiveEvent,
+  type SessionExpiredEvent,
+} from './core/events.js';
 
 // ============================================================================
 // SCHEMAS - For user model setup
@@ -144,6 +174,7 @@ export type {
   ObjectId,
   ObjectIdLike,
   AnyDocument,
+  DeepPartial,
   // Enum types
   AttendanceStatus,
   CheckInMethod,
@@ -151,11 +182,16 @@ export type {
   AttendancePeriod,
   AttendanceType,
   TimeSlot,
+  Priority,
+  CorrectionRequestType,
+  CorrectionRequestStatus,
   // Schema types
   CheckInEntry,
   AttendanceRecord,
   AttendanceStats,
   CurrentSession,
+  CorrectionEntry,
+  CorrectionRequest,
   // Operation types
   OperationContext,
   CheckInParams,
@@ -165,13 +201,32 @@ export type {
   ValidationResult,
   BulkCheckInData,
   BulkOperationResult,
+  SubmitCorrectionRequestParams,
+  ReviewCorrectionRequestParams,
   // Analytics types
   DashboardParams,
   DashboardResult,
   // Member types
   ClockInMember,
-  // Plugin types
+  // Legacy instance typing (v1-style plugins)
   ClockInInstance,
+  // Configuration types
+  EngagementThresholds,
+  StatsConfig,
+  AggregationConfig,
+  StreakConfig,
+  CheckInRules,
+  AnalyticsConfig,
+  NotificationConfig,
+  WorkSchedule,
+  AutoCheckoutConfig,
+  ValidationConfig,
+  DetectionRules,
+  TimeHints,
+  DetectionConfig,
+  TargetModelConfig,
+  SingleTenantConfig as ClockInSingleTenantConfig,
+  ClockInConfig,
   // Logger types
   Logger,
 } from './types.js';

@@ -5,7 +5,25 @@
  */
 
 export { Container } from './container.js';
-export { EventBus, createEventBus, type ClockInEventMap, type ClockInEventType } from './events.js';
+export {
+  EventBus,
+  createEventBus,
+  type BaseEvent,
+  type EventMemberInfo,
+  type CheckInRecordedEvent,
+  type CheckInFailedEvent,
+  type CheckOutRecordedEvent,
+  type CheckOutFailedEvent,
+  type MilestoneAchievedEvent,
+  type EngagementChangedEvent,
+  type StatsUpdatedEvent,
+  type MemberAtRiskEvent,
+  type MemberInactiveEvent,
+  type SessionExpiredEvent,
+  type ClockInEventPayload,
+  type ClockInEventMap,
+  type ClockInEventType,
+} from './events.js';
 export {
   Result,
   ok,
@@ -35,6 +53,12 @@ export {
   type PluginContext,
   type PluginLogger,
   type PluginHooks,
+  type BeforeCheckInHookData,
+  type BeforeCheckOutHookData,
+  type CheckInHookData,
+  type CheckOutHookData,
+  type MilestoneHookData,
+  type EngagementHookData,
 } from './plugin.js';
 export {
   withTransaction,

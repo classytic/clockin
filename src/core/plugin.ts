@@ -46,6 +46,16 @@ export interface PluginContext {
   };
 }
 
+export interface BeforeCheckInHookData {
+  memberId: ObjectId;
+  targetModel: string;
+}
+
+export interface BeforeCheckOutHookData {
+  memberId: ObjectId;
+  checkInId: ObjectId;
+}
+
 /** Check-in data for plugin hooks */
 export interface CheckInHookData {
   memberId: ObjectId;
@@ -91,11 +101,11 @@ export interface PluginHooks {
   /** Called when ClockIn is initialized */
   onInit?(ctx: PluginContext): void | Promise<void>;
   /** Called before check-in */
-  beforeCheckIn?(ctx: PluginContext, data: { memberId: ObjectId; targetModel: string }): void | Promise<void>;
+  beforeCheckIn?(ctx: PluginContext, data: BeforeCheckInHookData): void | Promise<void>;
   /** Called after successful check-in */
   afterCheckIn?(ctx: PluginContext, data: CheckInHookData): void | Promise<void>;
   /** Called before check-out */
-  beforeCheckOut?(ctx: PluginContext, data: { memberId: ObjectId; checkInId: ObjectId }): void | Promise<void>;
+  beforeCheckOut?(ctx: PluginContext, data: BeforeCheckOutHookData): void | Promise<void>;
   /** Called after successful check-out */
   afterCheckOut?(ctx: PluginContext, data: CheckOutHookData): void | Promise<void>;
   /** Called when milestone is achieved */
@@ -113,6 +123,17 @@ export interface ClockInPlugin extends PluginHooks {
   /** Plugin version */
   version?: string;
 }
+
+type HookDataMap = {
+  beforeCheckIn: BeforeCheckInHookData;
+  afterCheckIn: CheckInHookData;
+  beforeCheckOut: BeforeCheckOutHookData;
+  afterCheckOut: CheckOutHookData;
+  onMilestone: MilestoneHookData;
+  onEngagementChange: EngagementHookData;
+};
+
+type HookWithDataKey = keyof HookDataMap;
 
 // ============================================================================
 // PLUGIN MANAGER
@@ -164,13 +185,15 @@ export class PluginManager {
   /**
    * Run a hook on all plugins
    */
-  async runHook<K extends keyof PluginHooks>(
+  async runHook<K extends HookWithDataKey>(
     hook: K,
     ctx: PluginContext,
-    data: Parameters<NonNullable<PluginHooks[K]>>[1]
+    data: HookDataMap[K]
   ): Promise<void> {
     for (const plugin of this.plugins) {
-      const hookFn = plugin[hook] as ((ctx: PluginContext, data: unknown) => void | Promise<void>) | undefined;
+      const hookFn = plugin[hook] as
+        | ((ctx: PluginContext, data: HookDataMap[K]) => void | Promise<void>)
+        | undefined;
       if (hookFn) {
         try {
           await hookFn(ctx, data);

@@ -8,6 +8,8 @@
  */
 
 import type { Model } from 'mongoose';
+import type { EventBus } from './events.js';
+import type { PluginManager } from './plugin.js';
 import type { Logger, AttendanceRecord, TargetModelConfig, SingleTenantConfig } from '../types.js';
 
 /**
@@ -31,8 +33,8 @@ type Factory<T> = () => T;
 export type WellKnownKeys = {
   AttendanceModel: Model<AttendanceRecord>;
   models: Record<string, Model<unknown>>;
-  events: unknown; // EventBus type
-  plugins: unknown; // PluginManager type
+  events: EventBus;
+  plugins: PluginManager;
   logger: Logger;
   options: ClockInRuntimeOptions;
   configRegistry: Map<string, TargetModelConfig>;
