@@ -12,14 +12,17 @@ import { Result, ok, err } from '../core/result.js';
 import { EventBus, createEventBus } from '../core/events.js';
 import { PluginManager, type PluginContext } from '../core/plugin.js';
 import { getConfig } from '../config.js';
+import { BUILT_IN_TARGET_MODEL_VALUES } from '../enums.js';
 import {
   ClockInError,
   NoActiveSessionError,
   AlreadyCheckedOutError,
   ValidationError,
+  TargetModelNotAllowedError,
 } from '../errors/index.js';
 import { detectAttendanceType } from '../utils/detection.js';
 import { getLogger } from '../utils/logger.js';
+import type { ClientSession } from 'mongoose';
 import type { Logger } from '../types.js';
 import type {
   CheckOutParams,
@@ -34,6 +37,7 @@ import type {
   AnyDocument,
   AttendanceTargetModel,
 } from '../types.js';
+import { extractSession } from '../core/transaction.js';
 
 type ClockInRuntimeOptions = {
   singleTenant?: {
@@ -62,6 +66,7 @@ export class CheckOutService {
 
   /**
    * Get model from container (supports multi-connection setups)
+   * No fallbacks: models must be registered via .withModels()
    */
   private getModel(targetModel: string): mongoose.Model<any> {
     const models = this.container.has('models')
@@ -72,14 +77,9 @@ export class CheckOutService {
       return models[targetModel];
     }
 
-    // Fallback for backwards compatibility
-    const options = this.container.has('options')
-      ? this.container.get<ClockInRuntimeOptions>('options')
-      : {};
-    if ((options as any).debug) {
-      this.logger.warn(`Model "${targetModel}" not in container, falling back to mongoose.model()`);
-    }
-    return mongoose.model(targetModel);
+    throw new ValidationError(
+      `Model "${targetModel}" is not registered. Register it via .withModels({ ${targetModel} })`
+    );
   }
 
   /**
@@ -99,6 +99,25 @@ export class CheckOutService {
   }
 
   // ============================================================================
+  // VALIDATION
+  // ============================================================================
+
+  /**
+   * Validate targetModel against allowlist (if configured).
+   * Throws TargetModelNotAllowedError if not allowed.
+   */
+  private validateTargetModelAllowed(targetModel: string): void {
+    if (!this.container.has('allowedTargetModels')) {
+      return; // No allowlist configured, allow any
+    }
+
+    const allowedModels = this.container.get<string[]>('allowedTargetModels');
+    if (!allowedModels.includes(targetModel)) {
+      throw new TargetModelNotAllowedError(targetModel, allowedModels);
+    }
+  }
+
+  // ============================================================================
   // CHECK-OUT
   // ============================================================================
 
@@ -110,8 +129,17 @@ export class CheckOutService {
   ): Promise<Result<CheckOutResult, ClockInError>> {
     const { member, targetModel, checkInId, context = {} } = params;
 
+    // Validate targetModel against allowlist (if configured)
+    try {
+      this.validateTargetModelAllowed(targetModel);
+    } catch (error) {
+      if (error instanceof TargetModelNotAllowedError) {
+        return err(error);
+      }
+      throw error;
+    }
+
     const AttendanceModel = this.container.get<mongoose.Model<any>>('AttendanceModel');
-    const MemberModel = this.getModel(targetModel);
     const events = this.container.has('events') ? this.container.get<EventBus>('events') : null;
     const plugins = this.container.has('plugins') ? this.container.get<PluginManager>('plugins') : null;
 
@@ -132,6 +160,9 @@ export class CheckOutService {
       return err(new ValidationError('organizationId is required'));
     }
 
+    // Extract session for transactional operations
+    const session = extractSession(context);
+
     // Run plugin hooks (shared context)
     if (plugins && pluginCtx) {
       await plugins.runHook('beforeCheckOut', pluginCtx, {
@@ -141,13 +172,20 @@ export class CheckOutService {
     }
 
     try {
+      // Resolve target model (strict: must be registered via .withModels())
+      const MemberModel = this.getModel(targetModel);
+
       // Find attendance record with the check-in
-      const attendance = await AttendanceModel.findOne({
+      let attendanceQuery = AttendanceModel.findOne({
         tenantId: organizationId,
         targetModel,
         targetId: (member as any)._id,
         'checkIns._id': checkInId,
       });
+      if (session) {
+        attendanceQuery = attendanceQuery.session(session);
+      }
+      const attendance = await attendanceQuery;
 
       if (!attendance) {
         return err(new NoActiveSessionError((member as any)._id?.toString()));
@@ -190,7 +228,7 @@ export class CheckOutService {
         role: context.userRole,
       };
 
-      await attendance.save();
+      await attendance.save({ session });
 
       // Clear current session on member (using model from container)
       await MemberModel.findByIdAndUpdate(
@@ -203,7 +241,8 @@ export class CheckOutService {
             'currentSession.expectedCheckOutAt': null,
             'currentSession.method': null,
           },
-        }
+        },
+        { session } // Pass session for transaction support
       );
 
       // Emit events
@@ -280,6 +319,16 @@ export class CheckOutService {
   }): Promise<Result<ToggleResult, ClockInError>> {
     const { member, targetModel, data = {}, context = {} } = params;
 
+    // Validate targetModel against allowlist (if configured)
+    try {
+      this.validateTargetModelAllowed(targetModel);
+    } catch (error) {
+      if (error instanceof TargetModelNotAllowedError) {
+        return err(error);
+      }
+      throw error;
+    }
+
     // Check if member has active session
     const currentSession = (member as any).currentSession;
 
@@ -352,10 +401,17 @@ export class CheckOutService {
     const { organizationId, targetModel } = params;
 
     try {
-      // Query all models with active sessions
+      // Query all models with active sessions.
+      // Prefer container-registered models (supports custom target models and multi-connection setups).
       const models = targetModel
         ? [targetModel]
-        : ['Membership', 'Employee', 'Student', 'User', 'Trainer'];
+        : (() => {
+            if (this.container.has('models')) {
+              const registeredModels = this.container.get<Record<string, mongoose.Model<any>>>('models');
+              return Object.keys(registeredModels).filter((name) => name !== 'Attendance');
+            }
+            return BUILT_IN_TARGET_MODEL_VALUES;
+          })();
 
       const occupancy: OccupancyData = {
         total: 0,
@@ -429,4 +485,3 @@ export class CheckOutService {
 }
 
 export default CheckOutService;
-

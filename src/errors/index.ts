@@ -191,6 +191,29 @@ export class AlreadyCheckedOutError extends ClockInError {
   }
 }
 
+/**
+ * Error thrown when target model is not in the allowed list
+ */
+export class TargetModelNotAllowedError extends ClockInError {
+  readonly targetModel: string;
+  readonly allowedModels: string[];
+
+  constructor(
+    targetModel: string,
+    allowedModels: string[],
+    context: Record<string, unknown> = {}
+  ) {
+    const message = `Target model "${targetModel}" is not allowed. Allowed models: ${allowedModels.join(', ')}`;
+    super('TARGET_MODEL_NOT_ALLOWED', 400, message, {
+      targetModel,
+      allowedModels,
+      ...context,
+    });
+    this.targetModel = targetModel;
+    this.allowedModels = allowedModels;
+  }
+}
+
 // ============================================================================
 // ERROR FACTORY
 // ============================================================================
@@ -213,6 +236,7 @@ export function createError(
     ATTENDANCE_NOT_ENABLED: 403,
     NO_ACTIVE_SESSION: 404,
     ALREADY_CHECKED_OUT: 409,
+    TARGET_MODEL_NOT_ALLOWED: 400,
   };
 
   return new ClockInError(code, statusMap[code] || 500, message, context);
@@ -259,13 +283,6 @@ export function extractErrorInfo(error: unknown): {
 }
 
 // ============================================================================
-// LEGACY ALIASES (for backwards compatibility)
-// ============================================================================
-
-/** @deprecated Use ClockInError instead */
-export const AttendanceError = ClockInError;
-
-// ============================================================================
 // DEFAULT EXPORT
 // ============================================================================
 
@@ -279,6 +296,7 @@ export default {
   AttendanceNotEnabledError,
   NoActiveSessionError,
   AlreadyCheckedOutError,
+  TargetModelNotAllowedError,
   createError,
   isClockInError,
   extractErrorInfo,

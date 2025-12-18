@@ -12,7 +12,6 @@ import type {
   CheckInMethod,
   EngagementLevel,
   AttendancePeriod,
-  AttendanceTargetModel,
   StatsCalculationMode,
   AttendanceType,
   TimeSlot,
@@ -82,16 +81,23 @@ export const ATTENDANCE_PERIOD_VALUES = Object.values(ATTENDANCE_PERIOD);
 // ATTENDANCE TARGET MODELS
 // ============================================================================
 
-export const ATTENDANCE_TARGET_MODELS = {
+/**
+ * Built-in target models with pre-configured settings.
+ *
+ * Custom target models are supported - just pass them to `.withModels()`.
+ * Built-in models have smart defaults for detection and auto-checkout.
+ */
+export const BUILT_IN_TARGET_MODELS = {
   MEMBERSHIP: 'Membership',
   EMPLOYEE: 'Employee',
   TRAINER: 'Trainer',
   CLASS: 'Class',
   STUDENT: 'Student',
   USER: 'User',
-} as const satisfies Record<string, AttendanceTargetModel>;
+} as const;
 
-export const ATTENDANCE_TARGET_MODEL_VALUES = Object.values(ATTENDANCE_TARGET_MODELS);
+/** Array of built-in target model names */
+export const BUILT_IN_TARGET_MODEL_VALUES = Object.values(BUILT_IN_TARGET_MODELS);
 
 // ============================================================================
 // STATS CALCULATION MODE
@@ -233,45 +239,6 @@ export function calculateWorkDays(
   return fullDays + halfDays * 0.5 + paidLeaveDays;
 }
 
-/**
- * Check if target model is supported
- * @param model - Model name to check
- * @returns Whether model is supported
- */
-export function isValidTargetModel(model: string): model is AttendanceTargetModel {
-  return ATTENDANCE_TARGET_MODEL_VALUES.includes(model as AttendanceTargetModel);
-}
-
-/**
- * Check if check-in method is valid
- * @param method - Method to check
- * @returns Whether method is valid
- */
-export function isValidCheckInMethod(method: string): method is CheckInMethod {
-  return CHECK_IN_METHOD_VALUES.includes(method as CheckInMethod);
-}
-
-/**
- * Check if engagement level indicates risk
- * @param level - Engagement level
- * @returns Whether member is at risk
- */
-export function isAtRiskEngagement(level: EngagementLevel): boolean {
-  return level === ENGAGEMENT_LEVEL.AT_RISK || level === ENGAGEMENT_LEVEL.DORMANT;
-}
-
-/**
- * Check if engagement level is active
- * @param level - Engagement level
- * @returns Whether member is actively engaged
- */
-export function isActiveEngagement(level: EngagementLevel): boolean {
-  return (
-    level === ENGAGEMENT_LEVEL.HIGHLY_ACTIVE ||
-    level === ENGAGEMENT_LEVEL.ACTIVE ||
-    level === ENGAGEMENT_LEVEL.REGULAR
-  );
-}
 
 // ============================================================================
 // DEFAULT EXPORT
@@ -280,43 +247,25 @@ export function isActiveEngagement(level: EngagementLevel): boolean {
 export default {
   // Status
   ATTENDANCE_STATUS,
-  ATTENDANCE_STATUS_VALUES,
   // Methods
   CHECK_IN_METHOD,
-  CHECK_IN_METHOD_VALUES,
   // Engagement
   ENGAGEMENT_LEVEL,
-  ENGAGEMENT_LEVEL_VALUES,
   // Period
   ATTENDANCE_PERIOD,
-  ATTENDANCE_PERIOD_VALUES,
   // Target models
-  ATTENDANCE_TARGET_MODELS,
-  ATTENDANCE_TARGET_MODEL_VALUES,
-  // Stats mode
-  STATS_CALCULATION_MODE,
-  STATS_CALCULATION_MODE_VALUES,
+  BUILT_IN_TARGET_MODELS,
   // Attendance type
   ATTENDANCE_TYPE,
-  ATTENDANCE_TYPE_VALUES,
   // Time slot
   TIME_SLOT,
-  TIME_SLOT_VALUES,
   // Correction
   CORRECTION_REQUEST_TYPE,
-  CORRECTION_REQUEST_TYPE_VALUES,
   CORRECTION_REQUEST_STATUS,
-  CORRECTION_REQUEST_STATUS_VALUES,
   // Priority
   PRIORITY,
-  PRIORITY_VALUES,
   // Helpers
   getEngagementLevel,
   getTimeSlot,
-  calculateWorkDays,
-  isValidTargetModel,
-  isValidCheckInMethod,
-  isAtRiskEngagement,
-  isActiveEngagement,
 };
 

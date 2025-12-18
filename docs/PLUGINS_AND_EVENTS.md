@@ -77,7 +77,7 @@ export const myWebhookPlugin = definePlugin({
 ```ts
 import { ClockIn, loggingPlugin, metricsPlugin } from '@classytic/clockin';
 
-export const clockin = ClockIn
+export const clockin = await ClockIn
   .create()
   .withModels({ Attendance, Membership })
   .withPlugin(loggingPlugin({ level: 'info' }))

@@ -36,4 +36,17 @@ export {
   type PluginLogger,
   type PluginHooks,
 } from './plugin.js';
-
+export {
+  withTransaction,
+  withTransactionRetry,
+  hasSession,
+  extractSession,
+  type TransactionOptions,
+} from './transaction.js';
+export {
+  DefaultMemberResolver,
+  CompositeResolver,
+  createResolver,
+  type MemberResolver,
+  type DefaultMemberResolverOptions,
+} from './resolver.js';

@@ -7,8 +7,8 @@
  */
 
 import {
-  ATTENDANCE_TARGET_MODEL_VALUES,
   CHECK_IN_METHOD_VALUES,
+  BUILT_IN_TARGET_MODEL_VALUES,
 } from '../enums.js';
 import { CHECK_IN_RULES } from '../config.js';
 import {
@@ -98,24 +98,55 @@ export function validateCheckInTiming(
 }
 
 /**
- * Validate target model is supported
+ * Configuration for target model validation
+ */
+export interface TargetModelValidationConfig {
+  /**
+   * Allowed target models. If empty/undefined, any non-empty string is accepted.
+   * @default undefined (allow any)
+   */
+  allowedTargetModels?: string[];
+}
+
+/**
+ * Validate target model.
+ *
+ * As of v2.0, this function supports custom target models via allowlist configuration.
+ * If no allowlist is configured, any non-empty string is accepted.
  *
  * @param targetModel - Model name
- * @throws ValidationError if model not supported
+ * @param config - Optional validation config with allowlist
+ * @throws ValidationError if model is empty or not in allowlist (when configured)
+ *
+ * @example
+ * ```typescript
+ * // Allow any target model (default behavior)
+ * validateTargetModel('CustomEvent');
+ *
+ * // Restrict to specific models
+ * validateTargetModel('CustomEvent', {
+ *   allowedTargetModels: ['Membership', 'Employee', 'CustomEvent']
+ * });
+ * ```
  */
-export function validateTargetModel(targetModel: string | undefined): asserts targetModel is AttendanceTargetModel {
-  if (!targetModel) {
-    throw new ValidationError('targetModel is required', {
+export function validateTargetModel(
+  targetModel: string | undefined,
+  config: TargetModelValidationConfig = {}
+): asserts targetModel is AttendanceTargetModel {
+  if (!targetModel || typeof targetModel !== 'string' || targetModel.trim().length === 0) {
+    throw new ValidationError('targetModel is required and must be a non-empty string', {
       field: 'targetModel',
-      validValues: ATTENDANCE_TARGET_MODEL_VALUES,
+      validValues: config.allowedTargetModels || BUILT_IN_TARGET_MODEL_VALUES,
     });
   }
 
-  if (!ATTENDANCE_TARGET_MODEL_VALUES.includes(targetModel as AttendanceTargetModel)) {
-    throw new ValidationError(`Invalid targetModel: ${targetModel}`, {
+  // If allowlist is configured, validate against it
+  const allowlist = config.allowedTargetModels;
+  if (allowlist && allowlist.length > 0 && !allowlist.includes(targetModel)) {
+    throw new ValidationError(`targetModel "${targetModel}" is not in the allowed list`, {
       field: 'targetModel',
       value: targetModel,
-      validValues: ATTENDANCE_TARGET_MODEL_VALUES,
+      validValues: allowlist,
     });
   }
 }

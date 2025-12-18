@@ -14,7 +14,6 @@ import {
   ENGAGEMENT_LEVEL_VALUES,
   TIME_SLOT_VALUES,
   ATTENDANCE_TYPE_VALUES,
-  ATTENDANCE_TARGET_MODEL_VALUES,
   CORRECTION_REQUEST_TYPE_VALUES,
   CORRECTION_REQUEST_STATUS_VALUES,
   PRIORITY_VALUES,
@@ -488,7 +487,12 @@ export function createAttendanceSchema(
       targetModel: {
         type: String,
         required: true,
-        enum: ATTENDANCE_TARGET_MODEL_VALUES,
+        // Note: enum constraint removed in v2.0 to support custom target models.
+        // Validation is now handled at runtime via allowedTargetModels config.
+        validate: {
+          validator: (v: string) => typeof v === 'string' && v.length > 0,
+          message: 'targetModel must be a non-empty string',
+        },
       },
 
       targetId: {
@@ -596,11 +600,11 @@ export function createAttendanceSchema(
 
   // Indexes
   schema.index(
-    { tenantId: 1, targetId: 1, year: 1, month: 1 },
+    { tenantId: 1, targetModel: 1, targetId: 1, year: 1, month: 1 },
     { unique: true }
   );
   schema.index({ tenantId: 1, year: 1, month: 1 });
-  schema.index({ targetId: 1, year: -1, month: -1 });
+  schema.index({ tenantId: 1, targetModel: 1, targetId: 1, year: -1, month: -1 });
   schema.index({ tenantId: 1, 'checkIns.timestamp': 1 });
   schema.index({ 'checkIns.notes': 'text' });
 

@@ -19,11 +19,13 @@ import {
   DuplicateCheckInError,
   InvalidMemberError,
   AttendanceNotEnabledError,
+  TargetModelNotAllowedError,
 } from '../errors/index.js';
 import { calculateExpectedCheckout } from '../utils/schedule.js';
 import { calculateEngagementLevel, calculateLoyaltyScore } from '../utils/engagement.js';
 import { calculateStreak, isStreakMilestone } from '../utils/streak.js';
 import { getLogger } from '../utils/logger.js';
+import type { ClientSession } from 'mongoose';
 import type { Logger } from '../types.js';
 import type {
   CheckInParams,
@@ -39,6 +41,8 @@ import type {
   ObjectIdLike,
   AnyDocument,
 } from '../types.js';
+import { extractSession } from '../core/transaction.js';
+import { DefaultMemberResolver, type MemberResolver } from '../core/resolver.js';
 
 type ClockInRuntimeOptions = {
   singleTenant?: {
@@ -67,7 +71,7 @@ export class CheckInService {
 
   /**
    * Get model from container (supports multi-connection setups)
-   * Falls back to mongoose.model() only if not in container
+   * No fallbacks: models must be registered via .withModels()
    */
   private getModel(targetModel: string): mongoose.Model<any> {
     const models = this.container.has('models')
@@ -78,15 +82,9 @@ export class CheckInService {
       return models[targetModel];
     }
 
-    // Fallback for backwards compatibility (with warning in debug mode)
-    const options = this.container.has('options')
-      ? this.container.get<ClockInRuntimeOptions>('options')
-      : {};
-    if ((options as any).debug) {
-      this.logger.warn(`Model "${targetModel}" not found in container, falling back to mongoose.model(). ` +
-        `This may fail in multi-connection setups. Register it via .withModels({ ${targetModel} })`);
-    }
-    return mongoose.model(targetModel);
+    throw new ValidationError(
+      `Model "${targetModel}" is not registered. Register it via .withModels({ ${targetModel} })`
+    );
   }
 
   /**
@@ -108,6 +106,21 @@ export class CheckInService {
   // ============================================================================
   // VALIDATION
   // ============================================================================
+
+  /**
+   * Validate targetModel against allowlist (if configured).
+   * Throws TargetModelNotAllowedError if not allowed.
+   */
+  private validateTargetModelAllowed(targetModel: string): void {
+    if (!this.container.has('allowedTargetModels')) {
+      return; // No allowlist configured, allow any
+    }
+
+    const allowedModels = this.container.get<string[]>('allowedTargetModels');
+    if (!allowedModels.includes(targetModel)) {
+      throw new TargetModelNotAllowedError(targetModel, allowedModels);
+    }
+  }
 
   /**
    * Validate if member can check in
@@ -179,7 +192,17 @@ export class CheckInService {
   ): Promise<Result<CheckInResult, ClockInError>> {
     const { member, targetModel, data = {}, context = {} } = params;
 
-    // Validate
+    // Validate targetModel against allowlist (if configured)
+    try {
+      this.validateTargetModelAllowed(targetModel);
+    } catch (error) {
+      if (error instanceof TargetModelNotAllowedError) {
+        return err(error);
+      }
+      throw error;
+    }
+
+    // Validate member
     const validation = this.validate(member, targetModel, data);
     if (!validation.valid) {
       if ((member as any)?.attendanceEnabled === false) {
@@ -193,7 +216,6 @@ export class CheckInService {
 
     // Get models from container
     const AttendanceModel = this.container.get<mongoose.Model<any>>('AttendanceModel');
-    const MemberModel = this.getModel(targetModel);
     const events = this.container.has('events') ? this.container.get<EventBus>('events') : null;
     const plugins = this.container.has('plugins') ? this.container.get<PluginManager>('plugins') : null;
 
@@ -220,6 +242,9 @@ export class CheckInService {
     const shouldAutoInjectOrgId =
       !!options?.singleTenant?.organizationId && options?.singleTenant?.autoInject !== false;
 
+    // Extract session for transactional operations
+    const session = extractSession(context);
+
     // Run plugin hooks (use shared context)
     if (plugins && pluginCtx) {
       await plugins.runHook('beforeCheckIn', pluginCtx, {
@@ -229,6 +254,9 @@ export class CheckInService {
     }
 
     try {
+      // Resolve target model (strict: must be registered via .withModels())
+      const MemberModel = this.getModel(targetModel);
+
       // Create check-in entry with generated _id for atomicity
       const checkInEntry = this.createCheckInEntry(data, targetModel, member, context, now);
       const checkInId = new mongoose.Types.ObjectId();
@@ -262,6 +290,7 @@ export class CheckInService {
             {
               new: true,
               upsert: true,
+              session, // Pass session for transaction support
             }
           );
         } catch (error: any) {
@@ -280,7 +309,7 @@ export class CheckInService {
                 $inc: { monthlyTotal: 1 },
                 $addToSet: { visitedDays: dayString },
               },
-              { new: true }
+              { new: true, session } // Pass session for transaction support
             );
           }
           throw error;
@@ -291,7 +320,7 @@ export class CheckInService {
 
       // Update uniqueDaysVisited count (derived from visitedDays array length)
       attendance.uniqueDaysVisited = attendance.visitedDays?.length || 1;
-      await attendance.save();
+      await attendance.save({ session });
 
       // Get the added check-in
       const addedCheckIn = attendance.checkIns.find(
@@ -319,7 +348,7 @@ export class CheckInService {
             },
           },
         },
-        { new: true }
+        { new: true, session } // Pass session for transaction support
       );
 
       // Emit events
@@ -387,10 +416,33 @@ export class CheckInService {
 
   /**
    * Bulk check-in (for data imports)
+   *
+   * Supports pluggable member resolution via the `resolver` option.
+   * If no resolver is provided, uses the container-registered resolver
+   * or falls back to DefaultMemberResolver.
+   *
+   * @example
+   * ```typescript
+   * // Use default resolver (tries email, membershipCode, employeeId, _id)
+   * await checkInService.recordBulk(checkIns, context);
+   *
+   * // Use custom identifier fields
+   * await checkInService.recordBulk(checkIns, context, {
+   *   resolver: new DefaultMemberResolver(container, {
+   *     identifierFields: ['membershipCode', 'employeeId'],
+   *   }),
+   * });
+   *
+   * // Use completely custom resolver
+   * await checkInService.recordBulk(checkIns, context, {
+   *   resolver: myCustomResolver,
+   * });
+   * ```
    */
   async recordBulk(
     checkIns: BulkCheckInData[],
-    context: OperationContext = {}
+    context: OperationContext = {},
+    options: { resolver?: MemberResolver } = {}
   ): Promise<BulkOperationResult> {
     const results: BulkOperationResult = {
       success: 0,
@@ -398,13 +450,22 @@ export class CheckInService {
       errors: [],
     };
 
+    // Get resolver: passed option > container-registered > default
+    const resolver = options.resolver
+      || (this.container.has('memberResolver')
+          ? this.container.get<MemberResolver>('memberResolver')
+          : new DefaultMemberResolver(this.container));
+
     for (const checkInData of checkIns) {
       try {
-        const MemberModel = mongoose.model(checkInData.targetModel || 'Membership');
-        const member = await MemberModel.findOne({
-          organizationId: context.organizationId,
-          'customer.email': checkInData.memberIdentifier,
-        });
+        const targetModel = checkInData.targetModel || 'Membership';
+
+        // Use resolver to find member by identifier
+        const member = await resolver.resolve(
+          checkInData.memberIdentifier,
+          targetModel,
+          context
+        );
 
         if (!member) {
           results.failed++;
@@ -417,9 +478,9 @@ export class CheckInService {
 
         const result = await this.record({
           member,
-          targetModel: checkInData.targetModel || 'Membership',
+          targetModel,
           data: checkInData,
-          context,
+          context, // Session flows through via context
         });
 
         if (result.ok) {
@@ -595,4 +656,3 @@ export class CheckInService {
 }
 
 export default CheckInService;
-

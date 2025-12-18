@@ -70,7 +70,7 @@ import { ClockIn, loggingPlugin } from '@classytic/clockin';
 import { Attendance } from './attendance.js';
 import { Membership } from './membership.js';
 
-export const clockin = ClockIn
+export const clockin = await ClockIn
   .create()
   .withModels({ Attendance, Membership })
   .withPlugin(loggingPlugin())
@@ -127,9 +127,11 @@ const history = await clockin.analytics.history({
 
 ### A) Your Mongoose model **must be registered**
 
-Internally, ClockIn updates members via `mongoose.model(targetModel)`.
+ClockIn updates members using the models you register via `.withModels(...)`.
 
-So if you call `targetModel: 'Membership'`, you must have:
+So if you call `targetModel: 'Membership'`, you must:
+- create/register that Mongoose model, and
+- pass it into ClockIn via `.withModels({ Attendance, Membership })`.
 
 ```ts
 mongoose.model('Membership', membershipSchema);

@@ -1,8 +1,8 @@
 /**
  * ClockIn Configuration
  *
- * Centralized configuration with sensible defaults
- * Follows Stripe/Next-Auth patterns: convention over configuration
+ * Centralized configuration with sensible defaults.
+ * All config is instance-scoped - no global state.
  *
  * @module @classytic/clockin/config
  */
@@ -17,7 +17,6 @@ import type {
   AnalyticsConfig,
   NotificationConfig,
   TargetModelConfig,
-  AttendanceTargetModel,
   DeepPartial,
   EngagementLevel,
 } from './types.js';
@@ -113,17 +112,6 @@ export const NOTIFICATION_CONFIG: NotificationConfig = {
 export const DEFAULT_CHECK_IN_METHOD = CHECK_IN_METHOD.MANUAL;
 
 /**
- * Supported target models
- */
-export const SUPPORTED_MODELS: AttendanceTargetModel[] = [
-  'Membership',
-  'Employee',
-  'Trainer',
-  'Student',
-  'User',
-];
-
-/**
  * Default record TTL in days
  */
 export const DEFAULT_RECORD_TTL_DAYS = 730; // 2 years
@@ -131,12 +119,6 @@ export const DEFAULT_RECORD_TTL_DAYS = 730; // 2 years
 // ============================================================================
 // TARGET MODEL CONFIGURATIONS
 // ============================================================================
-
-/**
- * Global configuration registry (for backwards compatibility)
- * NOTE: Prefer using per-instance config via Container for multi-instance setups
- */
-const CONFIG_REGISTRY = new Map<string, TargetModelConfig>();
 
 /**
  * Container interface for type-safe access
@@ -147,7 +129,10 @@ interface ConfigContainer {
 }
 
 /**
- * Generate smart default config based on entity type
+ * Generate smart default config based on entity type.
+ *
+ * Built-in models (Employee, Membership, etc.) get optimized defaults.
+ * Custom models get sensible time-based defaults.
  */
 export function generateDefaultConfig(targetModel: string): TargetModelConfig {
   const isEmployee = targetModel === 'Employee';
@@ -183,96 +168,37 @@ export function generateDefaultConfig(targetModel: string): TargetModelConfig {
 }
 
 /**
- * Get configuration for a target model
- * Auto-generates if not registered (smart defaults)
+ * Get configuration for a target model.
+ *
+ * Looks up config from the container's registry, falling back to smart defaults.
+ * All config is instance-scoped - no global state.
  *
  * @param targetModel - Entity type (Membership, Employee, etc.)
- * @param container - Optional container to check for instance-specific config first
+ * @param container - Container with instance-specific config
  * @returns Configuration object
  */
 export function getConfig(targetModel: string, container?: ConfigContainer): TargetModelConfig {
-  // Check container first for instance-specific config (prevents cross-instance interference)
-  if (container) {
-    const configKey = `config:${targetModel}`;
-    if (container.has(configKey)) {
-      return container.get<TargetModelConfig>(configKey);
-    }
-    // Also check for an instance-specific registry
-    if (container.has('configRegistry')) {
-      const registry = container.get<Map<string, TargetModelConfig>>('configRegistry');
-      if (registry.has(targetModel)) {
-        return registry.get(targetModel)!;
-      }
+  if (!container) {
+    return generateDefaultConfig(targetModel);
+  }
+
+  // Check instance registry
+  if (container.has('configRegistry')) {
+    const registry = container.get<Map<string, TargetModelConfig>>('configRegistry');
+    if (registry.has(targetModel)) {
+      return registry.get(targetModel)!;
     }
   }
 
-  // Fallback to global registry
-  if (CONFIG_REGISTRY.has(targetModel)) {
-    return CONFIG_REGISTRY.get(targetModel)!;
-  }
-
-  // Auto-generate smart default
+  // Generate defaults and cache in registry
   const defaultConfig = generateDefaultConfig(targetModel);
 
-  // Store in container if available, otherwise global
-  if (container?.has('configRegistry')) {
+  if (container.has('configRegistry')) {
     const registry = container.get<Map<string, TargetModelConfig>>('configRegistry');
     registry.set(targetModel, defaultConfig);
-  } else {
-    CONFIG_REGISTRY.set(targetModel, defaultConfig);
   }
 
   return defaultConfig;
-}
-
-/**
- * Register or override a configuration
- *
- * @param targetModel - Entity type
- * @param config - Configuration object (can be partial for merge)
- *
- * @example
- * ```typescript
- * // Override specific settings
- * registerConfig('Employee', {
- *   detection: {
- *     rules: { thresholds: { overtime: 1.2 } }
- *   }
- * });
- * ```
- */
-export function registerConfig(
-  targetModel: string,
-  config: DeepPartial<TargetModelConfig>
-): void {
-  // Get existing or generate default
-  const existing = getConfig(targetModel);
-
-  // Deep merge
-  const merged = deepMerge(existing, config) as TargetModelConfig;
-  CONFIG_REGISTRY.set(targetModel, merged);
-}
-
-/**
- * Check if a target model has a custom config
- */
-export function hasConfig(targetModel: string): boolean {
-  return CONFIG_REGISTRY.has(targetModel);
-}
-
-/**
- * Get all registered models
- */
-export function getRegisteredModels(): string[] {
-  return Array.from(CONFIG_REGISTRY.keys());
-}
-
-/**
- * Reset config registry (for testing)
- * @internal
- */
-export function resetConfigRegistry(): void {
-  CONFIG_REGISTRY.clear();
 }
 
 // ============================================================================
@@ -282,7 +208,7 @@ export function resetConfigRegistry(): void {
 /**
  * Deep merge two objects
  */
-function deepMerge<T>(target: T, source: DeepPartial<T>): T {
+export function deepMerge<T>(target: T, source: DeepPartial<T>): T {
   const result = { ...target } as T & Record<string, unknown>;
 
   for (const key in source) {
@@ -298,13 +224,11 @@ function deepMerge<T>(target: T, source: DeepPartial<T>): T {
       targetValue !== null &&
       !Array.isArray(targetValue)
     ) {
-      // Recursively merge objects
       (result as Record<string, unknown>)[key] = deepMerge(
         targetValue as Record<string, unknown>,
         sourceValue as DeepPartial<Record<string, unknown>>
       );
     } else if (sourceValue !== undefined) {
-      // Override primitive values and arrays
       (result as Record<string, unknown>)[key] = sourceValue;
     }
   }
@@ -314,63 +238,13 @@ function deepMerge<T>(target: T, source: DeepPartial<T>): T {
 
 /**
  * Get engagement level from visit count
- * @param visitsThisMonth - Number of visits this month
- * @returns Engagement level
  */
 export function getEngagementLevelFromVisits(visitsThisMonth: number): EngagementLevel {
-  if (visitsThisMonth >= ENGAGEMENT_THRESHOLDS.highlyActive) {
-    return 'highly_active';
-  }
-  if (visitsThisMonth >= ENGAGEMENT_THRESHOLDS.active) {
-    return 'active';
-  }
-  if (visitsThisMonth >= ENGAGEMENT_THRESHOLDS.regular) {
-    return 'regular';
-  }
-  if (visitsThisMonth >= ENGAGEMENT_THRESHOLDS.occasional) {
-    return 'occasional';
-  }
+  if (visitsThisMonth >= ENGAGEMENT_THRESHOLDS.highlyActive) return 'highly_active';
+  if (visitsThisMonth >= ENGAGEMENT_THRESHOLDS.active) return 'active';
+  if (visitsThisMonth >= ENGAGEMENT_THRESHOLDS.regular) return 'regular';
+  if (visitsThisMonth >= ENGAGEMENT_THRESHOLDS.occasional) return 'occasional';
   return 'inactive';
-}
-
-/**
- * Validate check-in timing
- * @param lastCheckIn - Last check-in timestamp
- * @returns Validation result
- */
-export function validateCheckInTiming(lastCheckIn: Date | null | undefined): {
-  valid: boolean;
-  reason?: string;
-  nextAllowedTime?: Date;
-} {
-  if (!lastCheckIn) {
-    return { valid: true };
-  }
-
-  const hoursSinceLastCheckIn =
-    (Date.now() - new Date(lastCheckIn).getTime()) / (1000 * 60 * 60);
-
-  if (hoursSinceLastCheckIn < CHECK_IN_RULES.minimumTimeBetweenCheckIns) {
-    return {
-      valid: false,
-      reason: `Please wait ${CHECK_IN_RULES.minimumTimeBetweenCheckIns} hours between check-ins`,
-      nextAllowedTime: new Date(
-        new Date(lastCheckIn).getTime() +
-          CHECK_IN_RULES.minimumTimeBetweenCheckIns * 60 * 60 * 1000
-      ),
-    };
-  }
-
-  return { valid: true };
-}
-
-/**
- * Check if model supports attendance
- * @param modelName - Model name to check
- * @returns Whether model is supported
- */
-export function isAttendanceSupported(modelName: string): boolean {
-  return SUPPORTED_MODELS.includes(modelName as AttendanceTargetModel);
 }
 
 // ============================================================================
@@ -385,19 +259,10 @@ export default {
   CHECK_IN_RULES,
   ANALYTICS_CONFIG,
   NOTIFICATION_CONFIG,
-  SUPPORTED_MODELS,
   DEFAULT_CHECK_IN_METHOD,
   DEFAULT_RECORD_TTL_DAYS,
-
-  // Config registry functions
   getConfig,
-  registerConfig,
-  hasConfig,
-  getRegisteredModels,
-
-  // Helper functions
+  generateDefaultConfig,
+  deepMerge,
   getEngagementLevelFromVisits,
-  validateCheckInTiming,
-  isAttendanceSupported,
 };
-

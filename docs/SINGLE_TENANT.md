@@ -19,7 +19,7 @@ const Membership = mongoose.model('Membership', membershipSchema);
 const Attendance = mongoose.model('Attendance', createAttendanceSchema());
 
 // 2. Enable single-tenant mode
-const clockin = ClockIn
+const clockin = await ClockIn
   .create()
   .withModels({ Attendance, Membership })
   .forSingleTenant()  // ← That's it!

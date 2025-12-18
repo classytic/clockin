@@ -65,14 +65,42 @@ export type EngagementLevel =
 /** Time period for aggregation */
 export type AttendancePeriod = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
-/** Target model types */
-export type AttendanceTargetModel =
+/**
+ * Built-in target model types with smart defaults.
+ * These models have pre-configured detection rules and auto-checkout settings.
+ */
+export type BuiltInTargetModel =
   | 'Membership'
   | 'Employee'
   | 'Trainer'
   | 'Class'
   | 'Student'
   | 'User';
+
+/**
+ * Target model type.
+ *
+ * As of v2.0, this is a string type to support custom target models.
+ * Use `registerTargetModel()` in the builder to configure custom models.
+ *
+ * @example
+ * ```typescript
+ * // Built-in models work out of the box
+ * const clockin = ClockIn.create()
+ *   .withModels({ Attendance, Membership })
+ *   .build();
+ *
+ * // Custom models can be registered with config
+ * const clockin = ClockIn.create()
+ *   .withModels({ Attendance, Event })
+ *   .registerTargetModel('Event', {
+ *     detection: { type: 'time-based' },
+ *     autoCheckout: { enabled: true, afterHours: 4 }
+ *   })
+ *   .build();
+ * ```
+ */
+export type AttendanceTargetModel = string;
 
 /** Stats calculation mode */
 export type StatsCalculationMode = 'real_time' | 'pre_calculated' | 'hybrid';
@@ -797,6 +825,9 @@ export interface ReviewCorrectionRequestParams {
 // Plugin Types
 // ============================================================================
 
+/** Result type for service methods */
+export type Result<T, E = Error> = { ok: true; value: T } | { ok: false; error: E };
+
 /** ClockIn instance for plugin reference */
 export interface ClockInInstance {
   /** Configured attendance model */
@@ -807,10 +838,124 @@ export interface ClockInInstance {
   _hooks: Map<string, Array<(data: unknown) => void | Promise<void>>>;
   /** Is initialized */
   _initialized: boolean;
+
+  // ========================================
+  // Check-In Service
+  // ========================================
+
+  /** Check-in operations */
+  checkIn: {
+    /** Validate if member can check in */
+    validate<TMember extends AnyDocument>(
+      member: TMember | null | undefined,
+      targetModel: string,
+      options?: { timestamp?: Date }
+    ): ValidationResult;
+    /** Record a check-in */
+    record<TMember extends AnyDocument>(
+      params: CheckInParams<TMember>
+    ): Promise<Result<CheckInResult>>;
+    /** Bulk check-in (for data imports) */
+    recordBulk(
+      checkIns: BulkCheckInData[],
+      context?: OperationContext
+    ): Promise<BulkOperationResult>;
+  };
+
+  // ========================================
+  // Check-Out Service
+  // ========================================
+
+  /** Check-out operations */
+  checkOut: {
+    /** Record a check-out */
+    record<TMember extends AnyDocument>(
+      params: CheckOutParams<TMember>
+    ): Promise<Result<CheckOutResult>>;
+    /** Toggle check-in/out (smart action based on current state) */
+    toggle<TMember extends AnyDocument>(params: {
+      member: TMember;
+      targetModel: string;
+      data?: CheckInData;
+      context?: OperationContext;
+    }): Promise<Result<ToggleResult>>;
+    /** Get current occupancy (who's checked in right now) */
+    getOccupancy(params: {
+      organizationId: ObjectIdLike;
+      targetModel?: string;
+    }): Promise<Result<OccupancyData>>;
+    /** Get member's current active session */
+    getCurrentSession(params: {
+      memberId: ObjectIdLike;
+      organizationId: ObjectIdLike;
+      targetModel: string;
+    }): Promise<Result<ActiveSessionData | null>>;
+  };
+
+  // ========================================
+  // Analytics Service
+  // ========================================
+
+  /** Analytics operations */
+  analytics: {
+    /** Get dashboard analytics */
+    dashboard(params: DashboardParams): Promise<Result<DashboardResult>>;
+    /** Get member attendance history */
+    history(params: HistoryParams): Promise<Result<AttendanceRecord[]>>;
+    /** Get daily attendance trend */
+    dailyTrend(params: {
+      organizationId: ObjectIdLike;
+      days?: number;
+      targetModel?: string;
+    }): Promise<Result<DailyTrendEntry[]>>;
+    /** Get period statistics */
+    periodStats(params: {
+      organizationId: ObjectIdLike;
+      year: number;
+      month: number;
+      targetModel?: string;
+    }): Promise<Result<PeriodStats>>;
+    /** Get time slot distribution */
+    timeSlotDistribution(params: {
+      organizationId: ObjectIdLike;
+      startDate?: Date;
+      endDate?: Date;
+    }): Promise<Result<Record<string, number>>>;
+    /** Recalculate stats for members */
+    recalculateStats(params: {
+      MemberModel: Model<any>;
+      organizationId: ObjectIdLike;
+      memberIds?: ObjectIdLike[];
+    }): Promise<Result<{ processed: number; updated: number }>>;
+  };
+
+  // ========================================
+  // Event System
+  // ========================================
+
   /** Register event listener */
-  on(event: string, listener: (data: unknown) => void | Promise<void>): this;
-  /** Emit event */
-  emit(event: string, data: unknown): void;
+  on(event: string, listener: (data: unknown) => void | Promise<void>): () => void;
+  /** Register one-time event listener */
+  once(event: string, listener: (data: unknown) => void | Promise<void>): () => void;
+  /** Remove event listener */
+  off(event: string, listener: (data: unknown) => void | Promise<void>): void;
+
+  // ========================================
+  // Instance Properties
+  // ========================================
+
+  /** Whether single-tenant mode is enabled */
+  readonly isSingleTenant: boolean;
+  /** Single-tenant organization ID (if configured) */
+  readonly singleTenantOrgId: ObjectIdLike | undefined;
+
+  // ========================================
+  // Lifecycle
+  // ========================================
+
+  /** Destroy instance and clean up resources */
+  destroy(): Promise<void>;
+
   /** Extended properties from plugins */
   [key: string]: unknown;
 }
@@ -941,7 +1086,8 @@ export type ErrorCode =
   | 'VALIDATION_ERROR'
   | 'ATTENDANCE_NOT_ENABLED'
   | 'NO_ACTIVE_SESSION'
-  | 'ALREADY_CHECKED_OUT';
+  | 'ALREADY_CHECKED_OUT'
+  | 'TARGET_MODEL_NOT_ALLOWED';
 
 /** HTTP error with status code */
 export interface HttpError extends Error {

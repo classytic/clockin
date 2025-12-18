@@ -70,7 +70,7 @@ import { ClockIn, loggingPlugin } from '@classytic/clockin';
 import { Attendance } from './models/attendance.js';
 import { Membership } from './models/membership.js';
 
-export const clockin = ClockIn
+export const clockin = await ClockIn
   .create()
   .withModels({ Attendance, Membership })
   .withPlugin(loggingPlugin())
@@ -110,11 +110,45 @@ if (dashboard.ok) {
 }
 ```
 
+## 🎯 Custom Target Models (v2.0)
+
+ClockIn accepts **any target model** by default. Track attendance for memberships, employees, events, workshops, or any custom entity:
+
+```ts
+// Track attendance for a custom "Workshop" model
+const clockin = await ClockIn
+  .create()
+  .withModels({ Attendance, Workshop })
+  .build();
+
+await clockin.checkIn.record({
+  member: workshop,
+  targetModel: 'Workshop',  // Any string works
+  data: { method: 'api' },
+  context: { organizationId },
+});
+```
+
+### Restricting Target Models (Optional)
+
+For stricter validation, restrict to a specific allowlist:
+
+```ts
+const clockin = await ClockIn
+  .create()
+  .withModels({ Attendance, Membership, Employee })
+  .restrictTargetModels(['Membership', 'Employee'])  // Only these allowed
+  .build();
+
+// This will throw TargetModelNotAllowedError:
+await clockin.checkIn.record({ targetModel: 'Workshop', ... });
+```
+
 ## 🧠 Important Notes
 
-- **Target model naming matters**: services use `mongoose.model(targetModel)` internally.  
-  That means your model **must be registered** with the same name you pass in `targetModel` (e.g. `'Membership'`, `'Employee'`).
-- **Transactions**: ClockIn works without MongoDB transactions (compatible with standalone MongoDB and in-memory test DBs). If you need strict multi-document atomicity, we can add an optional transaction mode.
+- **Target model naming matters**: services use the models you register via `.withModels(...)`.
+  That means your `targetModel` string **must match the key** you passed in `.withModels({ ... })` (e.g. `'Membership'`, `'Employee'`).
+- **Transactions**: pass `context.session` to operations for atomic multi-document updates.
 
 ## 🔌 Plugins & Events
 

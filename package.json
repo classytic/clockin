@@ -1,6 +1,6 @@
 {
   "name": "@classytic/clockin",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Modern attendance management with TypeScript - Plugin-based, event-driven, multi-tenant ready. Analytics, engagement metrics, streaks, check-in/check-out management",
   "type": "module",
   "main": "./dist/index.js",

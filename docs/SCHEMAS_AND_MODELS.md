@@ -27,8 +27,8 @@ export const Attendance = mongoose.model(
 ### Required indexes
 
 `createAttendanceSchema()` includes these indexes:
-- Unique: `(tenantId, targetId, year, month)`
-- Query: `(tenantId, year, month)`, `(targetId, year desc, month desc)`
+- Unique: `(tenantId, targetModel, targetId, year, month)`
+- Query: `(tenantId, year, month)`, `(tenantId, targetModel, targetId, year desc, month desc)`
 - Time: `(tenantId, checkIns.timestamp)`
 
 ---

@@ -24,6 +24,11 @@ import { AnalyticsService } from './services/analytics.service.js';
 import { generateDefaultConfig } from './config.js';
 import { ValidationError } from './errors/index.js';
 import { setLogger } from './utils/logger.js';
+import {
+  DefaultMemberResolver,
+  type MemberResolver,
+  type DefaultMemberResolverOptions,
+} from './core/resolver.js';
 import type { Logger, ObjectIdLike, DeepPartial, TargetModelConfig } from './types.js';
 
 // ============================================================================
@@ -171,6 +176,9 @@ export class ClockInBuilder {
   private _models: ModelsConfig | null = null;
   private _plugins: ClockInPlugin[] = [];
   private _targetConfigs = new Map<string, DeepPartial<TargetModelConfig>>();
+  private _allowedTargetModels: string[] | undefined = undefined;
+  private _memberResolver: MemberResolver | null = null;
+  private _identifierFields: string[] | undefined = undefined;
 
   constructor(options: ClockInOptions = {}) {
     this._options = options;
@@ -181,8 +189,134 @@ export class ClockInBuilder {
     return this;
   }
 
+  /**
+   * Configure a target model with custom settings.
+   *
+   * Use this to register custom target models or override settings for built-in models.
+   *
+   * @example
+   * ```typescript
+   * ClockIn.create()
+   *   .withModels({ Attendance, Event })
+   *   .withTargetModel('Event', {
+   *     detection: { type: 'time-based' },
+   *     autoCheckout: { enabled: true, afterHours: 4 }
+   *   })
+   *   .build();
+   * ```
+   */
   withTargetModel(name: string, config: DeepPartial<TargetModelConfig>): this {
     this._targetConfigs.set(name, config);
+    return this;
+  }
+
+  /**
+   * Alias for withTargetModel - register a custom target model with configuration.
+   *
+   * @example
+   * ```typescript
+   * ClockIn.create()
+   *   .withModels({ Attendance, Workshop })
+   *   .registerTargetModel('Workshop', {
+   *     detection: { type: 'time-based' },
+   *     autoCheckout: { enabled: true, afterHours: 2 }
+   *   })
+   *   .build();
+   * ```
+   */
+  registerTargetModel(name: string, config: DeepPartial<TargetModelConfig> = {}): this {
+    return this.withTargetModel(name, config);
+  }
+
+  /**
+   * Allow any target model (default behavior).
+   *
+   * This explicitly enables the default v2.0 behavior where any non-empty string
+   * is accepted as a target model. Use this for clarity when you want to support
+   * custom target models without restrictions.
+   *
+   * @example
+   * ```typescript
+   * ClockIn.create()
+   *   .withModels({ Attendance, Event, Workshop, Membership })
+   *   .allowAnyTargetModel()
+   *   .build();
+   * ```
+   */
+  allowAnyTargetModel(): this {
+    this._allowedTargetModels = undefined;
+    return this;
+  }
+
+  /**
+   * Restrict target models to a specific allowlist.
+   *
+   * When configured, only the specified target models will be accepted.
+   * Use this for stricter validation when you know exactly which models
+   * should be supported.
+   *
+   * @example
+   * ```typescript
+   * ClockIn.create()
+   *   .withModels({ Attendance, Membership, Employee })
+   *   .restrictTargetModels(['Membership', 'Employee'])
+   *   .build();
+   * ```
+   */
+  restrictTargetModels(models: string[]): this {
+    this._allowedTargetModels = models;
+    return this;
+  }
+
+  /**
+   * Set a custom member resolver for bulk operations.
+   *
+   * The resolver determines how members are looked up by identifier
+   * in bulk check-in operations. Use this to implement custom lookup
+   * strategies (e.g., by membership code, employee ID, etc.).
+   *
+   * @example
+   * ```typescript
+   * // Custom resolver that looks up by membership code
+   * const models = { Attendance, Membership };
+   *
+   * const customResolver: MemberResolver = {
+   *   async resolve(identifier, targetModel, context) {
+   *     const Model = models[targetModel];
+   *     return Model.findOne({
+   *       organizationId: context.organizationId,
+   *       membershipCode: identifier,
+   *     });
+   *   },
+   * };
+   *
+   * ClockIn.create()
+   *   .withModels(models)
+   *   .withMemberResolver(customResolver)
+   *   .build();
+   * ```
+   */
+  withMemberResolver(resolver: MemberResolver): this {
+    this._memberResolver = resolver;
+    return this;
+  }
+
+  /**
+   * Configure the default member resolver with custom identifier fields.
+   *
+   * The default resolver tries each field in order until a member is found.
+   * Use this to customize which fields are searched for member lookup.
+   *
+   * @example
+   * ```typescript
+   * ClockIn.create()
+   *   .withModels({ Attendance, Membership })
+   *   .withIdentifierFields(['membershipCode', 'email', 'customer.email'])
+   *   .build();
+   * ```
+   */
+  withIdentifierFields(fields: string[]): this {
+    this._identifierFields = fields;
     return this;
   }
 
@@ -246,6 +380,18 @@ export class ClockInBuilder {
       const defaults = generateDefaultConfig(name);
       configRegistry.set(name, { ...defaults, ...config } as TargetModelConfig);
     }
+
+    // Target model allowlist (only register if configured)
+    if (this._allowedTargetModels !== undefined) {
+      container.singleton('allowedTargetModels', this._allowedTargetModels);
+    }
+
+    // Member resolver (for bulk operations)
+    const memberResolver = this._memberResolver
+      || new DefaultMemberResolver(container, {
+           identifierFields: this._identifierFields,
+         });
+    container.singleton('memberResolver', memberResolver);
 
     // Events
     const events = createEventBus();

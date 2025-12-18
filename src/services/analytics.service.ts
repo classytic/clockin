@@ -12,6 +12,7 @@ import { Result, ok, err } from '../core/result.js';
 import { ClockInError, ValidationError } from '../errors/index.js';
 import { toObjectId, buildAttendanceMatch } from '../utils/query-builders.js';
 import { getLogger } from '../utils/logger.js';
+import type { ClientSession } from 'mongoose';
 import type { Logger } from '../types.js';
 import type {
   DashboardParams,
@@ -314,13 +315,16 @@ export class AnalyticsService {
 
   /**
    * Recalculate stats for members
+   *
+   * @param params.session - Optional MongoDB session for transaction support
    */
   async recalculateStats(params: {
     MemberModel: mongoose.Model<any>;
     organizationId: ObjectIdLike;
     memberIds?: ObjectIdLike[];
+    session?: ClientSession;
   }): Promise<Result<{ processed: number; updated: number }, ClockInError>> {
-    const { MemberModel, organizationId, memberIds } = params;
+    const { MemberModel, organizationId, memberIds, session } = params;
 
     try {
       const AttendanceModel = this.container.get<mongoose.Model<any>>('AttendanceModel');
@@ -418,7 +422,7 @@ export class AnalyticsService {
           engagementLevel = 'occasional';
         }
 
-        // Update member
+        // Update member (with optional session for transaction support)
         await MemberModel.updateOne(
           { _id: member._id },
           {
@@ -433,7 +437,8 @@ export class AnalyticsService {
               'attendanceStats.daysSinceLastVisit': daysSinceLastVisit,
               'attendanceStats.updatedAt': now,
             },
-          }
+          },
+          { session } // Pass session for transaction support
         );
 
         updated++;

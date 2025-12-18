@@ -1,16 +1,53 @@
 /**
  * ClockIn Dependency Injection Container
  *
- * Simple, type-safe DI container for service management
- * Inspired by Revenue library's Container pattern
+ * Simple, type-safe DI container for service management.
+ * Each ClockIn instance has its own container - no global singletons.
  *
  * @module @classytic/clockin/core/container
  */
 
+import type { Model } from 'mongoose';
+import type { Logger, AttendanceRecord, TargetModelConfig, SingleTenantConfig } from '../types.js';
+
+/**
+ * Runtime options stored in container
+ */
+export interface ClockInRuntimeOptions {
+  singleTenant?: SingleTenantConfig | null;
+  debug?: boolean;
+  logger?: Logger;
+}
+
+// ============================================================================
+// Container Types
+// ============================================================================
+
 type Factory<T> = () => T;
 
 /**
- * Lightweight DI Container
+ * Well-known container keys for type-safe access
+ */
+export type WellKnownKeys = {
+  AttendanceModel: Model<AttendanceRecord>;
+  models: Record<string, Model<unknown>>;
+  events: unknown; // EventBus type
+  plugins: unknown; // PluginManager type
+  logger: Logger;
+  options: ClockInRuntimeOptions;
+  configRegistry: Map<string, TargetModelConfig>;
+  allowedTargetModels: Set<string>;
+};
+
+// ============================================================================
+// Container Class
+// ============================================================================
+
+/**
+ * Lightweight DI Container with type-safe accessors
+ *
+ * Each ClockIn instance creates its own container, avoiding global state issues
+ * in serverless and multi-app environments.
  *
  * @example
  * ```typescript
@@ -18,7 +55,11 @@ type Factory<T> = () => T;
  * container.singleton('logger', myLogger);
  * container.factory('service', () => new MyService(container.get('logger')));
  *
- * const service = container.get<MyService>('service');
+ * // Type-safe access for well-known keys
+ * const logger = container.get<Logger>('logger');
+ *
+ * // Or use typed helper methods
+ * const attendanceModel = container.getAttendanceModel();
  * ```
  */
 export class Container {
@@ -86,7 +127,74 @@ export class Container {
     this.singletons.clear();
     this.factories.clear();
   }
+
+  // ========================================
+  // Type-Safe Accessors for Well-Known Keys
+  // ========================================
+
+  /**
+   * Get the AttendanceModel (strongly typed)
+   * @throws Error if not registered
+   */
+  getAttendanceModel<T extends AttendanceRecord = AttendanceRecord>(): Model<T> {
+    return this.get<Model<T>>('AttendanceModel');
+  }
+
+  /**
+   * Get all registered models
+   */
+  getModels(): Record<string, Model<unknown>> {
+    return this.get<Record<string, Model<unknown>>>('models');
+  }
+
+  /**
+   * Get logger
+   */
+  getLogger(): Logger {
+    return this.get<Logger>('logger');
+  }
+
+  /**
+   * Get runtime options
+   */
+  getOptions(): ClockInRuntimeOptions {
+    return this.get<ClockInRuntimeOptions>('options');
+  }
+
+  /**
+   * Get config registry
+   */
+  getConfigRegistry(): Map<string, TargetModelConfig> {
+    return this.get<Map<string, TargetModelConfig>>('configRegistry');
+  }
+
+  /**
+   * Get allowed target models
+   */
+  getAllowedTargetModels(): Set<string> {
+    return this.get<Set<string>>('allowedTargetModels');
+  }
+
+  /**
+   * Check if single-tenant mode is enabled
+   */
+  isSingleTenant(): boolean {
+    if (!this.has('options')) return false;
+    const options = this.getOptions();
+    return !!options.singleTenant;
+  }
+
+  /**
+   * Get organization ID for single-tenant mode
+   */
+  getOrganizationId(): string | null {
+    if (!this.has('options')) return null;
+    const options = this.getOptions();
+    if (!options.singleTenant?.organizationId) return null;
+    return typeof options.singleTenant.organizationId === 'string'
+      ? options.singleTenant.organizationId
+      : options.singleTenant.organizationId.toString();
+  }
 }
 
 export default Container;
-
