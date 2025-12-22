@@ -11,6 +11,7 @@ ClockIn stores attendance records as:
 - **1 document per member per month**
 - `checkIns[]` contains individual check-in entries
 - `monthlyTotal` and `uniqueDaysVisited` are maintained for fast reporting
+- work-day counters (`fullDaysCount`, `halfDaysCount`, `paidLeaveDaysCount`, `overtimeDaysCount`, `totalWorkDays`) are recomputed on check-out from `checkIns[].attendanceType`
 
 Create the schema via:
 
@@ -63,6 +64,9 @@ These are used by services for:
 - occupancy and session handling
 - analytics queries (engagement/streak)
 
+`applyAttendanceIndexes()` also adds real-time session indexes for `currentSession.isActive`
+and `currentSession.expectedCheckOutAt` to keep occupancy and auto-checkout queries fast.
+
 ---
 
 ## Naming requirement
@@ -80,5 +84,3 @@ mongoose.model('Membership', membershipSchema);
 ```
 
 If the name doesn’t match, ClockIn can’t update the member’s embedded stats/session fields.
-
-

@@ -427,6 +427,7 @@ export const commonAttendanceFields = {
  */
 export const attendanceIndexes = [
   { tenantId: 1, year: 1, month: 1 },
+  { tenantId: 1, targetModel: 1, year: 1, month: 1 },
   { targetId: 1, year: 1, month: 1 },
   { tenantId: 1, 'checkIns.timestamp': 1 },
   { tenantId: 1, 'attendanceStats.engagementLevel': 1 },
@@ -454,6 +455,7 @@ export function applyAttendanceIndexes(
 
   // Real-time session index
   schema.index({ [tenantField]: 1, 'currentSession.isActive': 1 });
+  schema.index({ [tenantField]: 1, 'currentSession.isActive': 1, 'currentSession.expectedCheckOutAt': 1 });
 }
 
 // ============================================================================
@@ -604,6 +606,7 @@ export function createAttendanceSchema(
     { unique: true }
   );
   schema.index({ tenantId: 1, year: 1, month: 1 });
+  schema.index({ tenantId: 1, targetModel: 1, year: 1, month: 1 });
   schema.index({ tenantId: 1, targetModel: 1, targetId: 1, year: -1, month: -1 });
   schema.index({ tenantId: 1, 'checkIns.timestamp': 1 });
   schema.index({ 'checkIns.notes': 'text' });
@@ -643,4 +646,3 @@ export default {
   applyAttendanceIndexes,
   createAttendanceSchema,
 };
-

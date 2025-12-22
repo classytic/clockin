@@ -123,7 +123,42 @@ const history = await clockin.analytics.history({
 
 ---
 
-## 7) Critical pitfalls (read this)
+## 7) Auto-checkout at scale
+
+ClockIn ships a batch helper so you can safely close expired sessions in chunks (ideal for cron):
+
+```ts
+await clockin.checkOut.checkoutExpired({
+  organizationId,
+  targetModel: 'Employee', // optional
+  before: new Date(),
+  limit: 500,
+});
+```
+
+### Cron recipe (multi-tenant safe)
+
+The safest pattern is to run per tenant with small batches and a short interval. This avoids
+noisy neighbors and keeps latency predictable:
+
+```ts
+const tenants = await Organization.find({}, { _id: 1 }).lean();
+
+for (const tenant of tenants) {
+  await clockin.checkOut.checkoutExpired({
+    organizationId: tenant._id,
+    before: new Date(),
+    limit: 500,
+  });
+}
+```
+
+If you want a global sweep (single-tenant or low volume), you can omit `targetModel`
+to process all registered models.
+
+---
+
+## 8) Critical pitfalls (read this)
 
 ### A) Your Mongoose model **must be registered**
 
@@ -142,6 +177,25 @@ mongoose.model('Membership', membershipSchema);
 ClockIn is designed for scale—make sure to apply:
 - `createAttendanceSchema()` indexes (already included)
 - `applyAttendanceIndexes()` on member/employee schemas
+
+### C) Check-out requires a check-in id
+
+`checkOut.record` needs a `checkInId`. If you call it directly (outside of `toggle`),
+pass the id explicitly and store it from the check-in response.
+
+### D) Occupancy is part of check-out
+
+Use `clockin.checkOut.getOccupancy` for current occupancy queries.
+
+### E) Half-day types in schedule-aware detection
+
+For schedule-aware models (like `Employee`), check-out detection can return
+`half_day_morning` or `half_day_afternoon` based on time hints.
+
+### F) Indexes for current sessions
+
+Use `applyAttendanceIndexes()` to add real-time indexes for `currentSession.isActive`
+and `currentSession.expectedCheckOutAt` so occupancy and auto-checkout scans stay fast.
 
 ---
 

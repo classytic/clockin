@@ -36,6 +36,8 @@ import type {
   ObjectIdLike,
   AnyDocument,
   AttendanceTargetModel,
+  CheckoutExpiredParams,
+  CheckoutExpiredResult,
 } from '../types.js';
 import { extractSession } from '../core/transaction.js';
 
@@ -228,6 +230,47 @@ export class CheckOutService {
         role: context.userRole,
       };
 
+      const workdayCounts = attendance.checkIns.reduce(
+        (counts: { full: number; half: number; paidLeave: number; overtime: number }, entry: any) => {
+          const type = entry.attendanceType as string | undefined;
+          if (!type) {
+            return counts;
+          }
+
+          switch (type) {
+            case 'full_day':
+              counts.full += 1;
+              break;
+            case 'half_day':
+            case 'half_day_morning':
+            case 'half_day_afternoon':
+              counts.half += 1;
+              break;
+            case 'paid_leave':
+              counts.paidLeave += 1;
+              break;
+            case 'overtime':
+              counts.overtime += 1;
+              break;
+            default:
+              break;
+          }
+
+          return counts;
+        },
+        { full: 0, half: 0, paidLeave: 0, overtime: 0 }
+      );
+
+      attendance.fullDaysCount = workdayCounts.full;
+      attendance.halfDaysCount = workdayCounts.half;
+      attendance.paidLeaveDaysCount = workdayCounts.paidLeave;
+      attendance.overtimeDaysCount = workdayCounts.overtime;
+      attendance.totalWorkDays =
+        workdayCounts.full +
+        workdayCounts.half * 0.5 +
+        workdayCounts.paidLeave +
+        workdayCounts.overtime;
+
       await attendance.save({ session });
 
       // Clear current session on member (using model from container)
@@ -390,6 +433,129 @@ export class CheckOutService {
   // ============================================================================
   // OCCUPANCY & SESSIONS
   // ============================================================================
+
+  /**
+   * Batch check-out for expired sessions
+   */
+  async checkoutExpired(
+    params: CheckoutExpiredParams
+  ): Promise<Result<CheckoutExpiredResult, ClockInError>> {
+    const { targetModel, before = new Date(), limit = 500, context = {} } = params;
+    const options = this.container.has('options')
+      ? this.container.get<ClockInRuntimeOptions>('options')
+      : undefined;
+
+    const organizationId =
+      params.organizationId || context.organizationId || options?.singleTenant?.organizationId;
+
+    if (!organizationId) {
+      return err(new ValidationError('organizationId is required'));
+    }
+
+    if (limit <= 0) {
+      return err(new ValidationError('limit must be a positive number'));
+    }
+
+    if (targetModel) {
+      try {
+        this.validateTargetModelAllowed(targetModel);
+      } catch (error) {
+        if (error instanceof TargetModelNotAllowedError) {
+          return err(error);
+        }
+        throw error;
+      }
+    }
+
+    const allowedModels = this.container.has('allowedTargetModels')
+      ? this.container.get<string[]>('allowedTargetModels')
+      : null;
+    const models = targetModel
+      ? [targetModel]
+      : (() => {
+          if (this.container.has('models')) {
+            const registeredModels = this.container.get<Record<string, mongoose.Model<any>>>('models');
+            const names = Object.keys(registeredModels).filter((name) => name !== 'Attendance');
+            return allowedModels ? names.filter((name) => allowedModels.includes(name)) : names;
+          }
+          return allowedModels || BUILT_IN_TARGET_MODEL_VALUES;
+        })();
+
+    const summary: CheckoutExpiredResult = {
+      total: 0,
+      processed: 0,
+      failed: 0,
+      errors: [],
+    };
+
+    for (const model of models) {
+      let Model: mongoose.Model<any>;
+      try {
+        Model = this.getModel(model);
+      } catch (error) {
+        summary.errors.push({
+          targetModel: model,
+          reason: (error as Error).message,
+        });
+        summary.failed += 1;
+        continue;
+      }
+
+      const expiredMembers = await Model.find({
+        organizationId,
+        'currentSession.isActive': true,
+        'currentSession.expectedCheckOutAt': { $lt: before },
+      })
+        .sort({ 'currentSession.expectedCheckOutAt': 1 })
+        .limit(limit)
+        .select('_id currentSession');
+
+      if (expiredMembers.length === 0) {
+        continue;
+      }
+
+      summary.total += expiredMembers.length;
+
+      for (const member of expiredMembers) {
+        const currentSession = (member as any).currentSession;
+        const checkInId = currentSession?.checkInId;
+
+        if (!checkInId) {
+          summary.failed += 1;
+          summary.errors.push({
+            targetModel: model,
+            memberId: (member as any)._id,
+            reason: 'Missing currentSession.checkInId',
+          });
+          continue;
+        }
+
+        const result = await this.record({
+          member,
+          targetModel: model as AttendanceTargetModel,
+          checkInId,
+          context: {
+            ...context,
+            organizationId,
+          },
+        });
+
+        if (result.ok) {
+          summary.processed += 1;
+        } else {
+          summary.failed += 1;
+          summary.errors.push({
+            targetModel: model,
+            memberId: (member as any)._id,
+            checkInId,
+            reason: result.error.message,
+          });
+        }
+      }
+    }
+
+    return ok(summary);
+  }
 
   /**
    * Get current occupancy (who's checked in right now)

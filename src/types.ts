@@ -561,6 +561,37 @@ export interface CheckOutResult {
   duration: number;
 }
 
+/** Batch checkout parameters for expired sessions */
+export interface CheckoutExpiredParams {
+  /** Organization ID (optional in single-tenant mode) */
+  organizationId?: ObjectIdLike;
+  /** Target model name (optional: process all registered models) */
+  targetModel?: AttendanceTargetModel;
+  /** Process sessions with expectedCheckOutAt before this time */
+  before?: Date;
+  /** Max sessions to process per target model */
+  limit?: number;
+  /** Operation context */
+  context?: OperationContext;
+}
+
+/** Batch checkout result summary */
+export interface CheckoutExpiredResult {
+  /** Total sessions considered */
+  total: number;
+  /** Successfully checked out */
+  processed: number;
+  /** Failed to check out */
+  failed: number;
+  /** Failure details */
+  errors: Array<{
+    targetModel?: string;
+    memberId?: ObjectIdLike;
+    checkInId?: ObjectIdLike;
+    reason: string;
+  }>;
+}
+
 /** Toggle result (check-in or check-out) */
 export interface ToggleResult extends Partial<CheckInResult>, Partial<CheckOutResult> {
   /** Action performed */
@@ -677,15 +708,15 @@ export interface DashboardResult {
 
 /** History parameters */
 export interface HistoryParams {
-  /** Member ID */
-  memberId: ObjectIdLike;
+  /** Target document ID (e.g., Membership ID, Employee ID) */
+  targetId: ObjectIdLike;
   /** Organization ID */
   organizationId: ObjectIdLike;
   /** Year filter */
   year?: number;
   /** Month filter */
   month?: number;
-  /** Target model */
+  /** Target model filter */
   targetModel?: AttendanceTargetModel;
 }
 
@@ -884,6 +915,10 @@ export interface ClockInInstance {
       organizationId: ObjectIdLike;
       targetModel?: string;
     }): Promise<Result<OccupancyData>>;
+    /** Batch check-out for expired sessions */
+    checkoutExpired(
+      params: CheckoutExpiredParams
+    ): Promise<Result<CheckoutExpiredResult>>;
     /** Get member's current active session */
     getCurrentSession(params: {
       memberId: ObjectIdLike;
@@ -1172,4 +1207,3 @@ export type WithClockIn<TMember> = TMember & {
   currentSession: CurrentSession;
   attendanceEnabled: boolean;
 };
-

@@ -143,23 +143,32 @@ export {
 export {
   // Status
   ATTENDANCE_STATUS,
+  ATTENDANCE_STATUS_VALUES,
   // Methods
   CHECK_IN_METHOD,
+  CHECK_IN_METHOD_VALUES,
   // Engagement
   ENGAGEMENT_LEVEL,
+  ENGAGEMENT_LEVEL_VALUES,
   // Period
   ATTENDANCE_PERIOD,
+  ATTENDANCE_PERIOD_VALUES,
   // Target models
   BUILT_IN_TARGET_MODELS,
   // Attendance type
   ATTENDANCE_TYPE,
+  ATTENDANCE_TYPE_VALUES,
   // Time slot
   TIME_SLOT,
+  TIME_SLOT_VALUES,
   // Correction
   CORRECTION_REQUEST_TYPE,
+  CORRECTION_REQUEST_TYPE_VALUES,
   CORRECTION_REQUEST_STATUS,
+  CORRECTION_REQUEST_STATUS_VALUES,
   // Priority
   PRIORITY,
+  PRIORITY_VALUES,
   // Helper functions
   getEngagementLevel,
   getTimeSlot,
@@ -181,6 +190,7 @@ export type {
   EngagementLevel,
   AttendancePeriod,
   AttendanceType,
+  AttendanceTargetModel,
   TimeSlot,
   Priority,
   CorrectionRequestType,
@@ -192,12 +202,18 @@ export type {
   CurrentSession,
   CorrectionEntry,
   CorrectionRequest,
+  LocationData,
+  DeviceInfo,
   // Operation types
   OperationContext,
   CheckInParams,
   CheckOutParams,
   CheckInResult,
   CheckOutResult,
+  CheckoutExpiredParams,
+  CheckoutExpiredResult,
+  ToggleResult,
+  CheckInData,
   ValidationResult,
   BulkCheckInData,
   BulkOperationResult,
@@ -206,6 +222,11 @@ export type {
   // Analytics types
   DashboardParams,
   DashboardResult,
+  HistoryParams,
+  OccupancyData,
+  ActiveSessionData,
+  DailyTrendEntry,
+  PeriodStats,
   // Member types
   ClockInMember,
   // Legacy instance typing (v1-style plugins)

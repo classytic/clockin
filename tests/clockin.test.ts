@@ -275,6 +275,93 @@ describe('CheckOut Service', () => {
     }
   });
 
+  it('should recompute work-day counters on check-out', async () => {
+    const member = await createTestMember(testOrgId);
+
+    const checkInResult = await clockin.checkIn.record({
+      member,
+      targetModel: 'Membership',
+      context: { organizationId: testOrgId },
+    });
+
+    expect(isOk(checkInResult)).toBe(true);
+    const checkInId = unwrap(checkInResult).checkIn._id;
+
+    const attendance = await Attendance.findOne({
+      tenantId: testOrgId,
+      targetModel: 'Membership',
+      targetId: member._id,
+    });
+
+    expect(attendance).toBeDefined();
+    if (!attendance) {
+      return;
+    }
+
+    attendance.checkIns.push(
+      { timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000), attendanceType: 'half_day_morning' },
+      { timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), attendanceType: 'paid_leave' },
+      { timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000), attendanceType: 'overtime' }
+    );
+    await attendance.save();
+
+    const checkOutResult = await clockin.checkOut.record({
+      member: unwrap(checkInResult).updatedMember,
+      targetModel: 'Membership',
+      checkInId,
+      context: { organizationId: testOrgId },
+    });
+
+    expect(isOk(checkOutResult)).toBe(true);
+
+    const refreshed = await Attendance.findById(attendance._id);
+    expect(refreshed?.fullDaysCount).toBe(1);
+    expect(refreshed?.halfDaysCount).toBe(1);
+    expect(refreshed?.paidLeaveDaysCount).toBe(1);
+    expect(refreshed?.overtimeDaysCount).toBe(1);
+    expect(refreshed?.totalWorkDays).toBe(3.5);
+  });
+
+  it('should batch check-out expired sessions', async () => {
+    const member = await createTestMember(testOrgId);
+
+    const checkInResult = await clockin.checkIn.record({
+      member,
+      targetModel: 'Membership',
+      context: { organizationId: testOrgId },
+    });
+
+    expect(isOk(checkInResult)).toBe(true);
+
+    await Membership.findByIdAndUpdate(member._id, {
+      $set: {
+        'currentSession.expectedCheckOutAt': new Date(Date.now() - 60 * 1000),
+      },
+    });
+
+    const result = await clockin.checkOut.checkoutExpired({
+      organizationId: testOrgId,
+      targetModel: 'Membership',
+      limit: 10,
+    });
+
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result.value.processed).toBe(1);
+      expect(result.value.failed).toBe(0);
+    }
+
+    const refreshedMember = await Membership.findById(member._id).select('currentSession');
+    expect(refreshedMember?.currentSession?.isActive).toBe(false);
+
+    const attendance = await Attendance.findOne({
+      tenantId: testOrgId,
+      targetModel: 'Membership',
+      targetId: member._id,
+    });
+    expect(attendance?.checkIns[0]?.checkOutAt).toBeDefined();
+  });
+
   it('should toggle check-in/out correctly', async () => {
     const member = await createTestMember(testOrgId);
 
@@ -394,7 +481,7 @@ describe('Analytics Service', () => {
     });
 
     const result = await clockin.analytics.history({
-      memberId: member._id,
+      targetId: member._id,
       organizationId: testOrgId,
     });
 
@@ -566,4 +653,3 @@ describe('Result Type', () => {
     expect(() => unwrap(result)).toThrow('test');
   });
 });
-

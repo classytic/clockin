@@ -97,7 +97,7 @@ export class AnalyticsService {
    * Get member attendance history
    */
   async history(params: HistoryParams): Promise<Result<AttendanceRecord[], ClockInError>> {
-    const { memberId, organizationId, year, month, targetModel } = params;
+    const { targetId, organizationId, year, month, targetModel } = params;
 
     if (!organizationId) {
       return err(new ValidationError('organizationId is required'));
@@ -113,7 +113,7 @@ export class AnalyticsService {
         month,
       });
 
-      match.targetId = toObjectId(memberId);
+      match.targetId = toObjectId(targetId);
 
       const records = await AttendanceModel.find(match)
         .sort({ year: -1, month: -1 })
@@ -121,7 +121,7 @@ export class AnalyticsService {
 
       return ok(records);
     } catch (error) {
-      this.logger.error('History fetch failed', { error, memberId });
+      this.logger.error('History fetch failed', { error, targetId });
       return err(new ClockInError('ATTENDANCE_ERROR', 500, (error as Error).message));
     }
   }

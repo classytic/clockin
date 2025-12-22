@@ -1,6 +1,6 @@
 {
   "name": "@classytic/clockin",
-  "version": "2.1.1",
+  "version": "2.1.4",
   "description": "Modern attendance management with TypeScript - Plugin-based, event-driven, multi-tenant ready. Analytics, engagement metrics, streaks, check-in/check-out management",
   "type": "module",
   "main": "./dist/index.js",
@@ -8,25 +8,61 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./clockin": {
+      "types": "./dist/clockin.d.ts",
+      "import": "./dist/clockin.js",
+      "default": "./dist/clockin.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js",
+      "default": "./dist/config.js"
+    },
+    "./enums": {
+      "types": "./dist/enums.d.ts",
+      "import": "./dist/enums.js",
+      "default": "./dist/enums.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js",
+      "default": "./dist/types.js"
+    },
+    "./errors": {
+      "types": "./dist/errors/index.d.ts",
+      "import": "./dist/errors/index.js",
+      "default": "./dist/errors/index.js"
+    },
+    "./factories": {
+      "types": "./dist/factories/index.d.ts",
+      "import": "./dist/factories/index.js",
+      "default": "./dist/factories/index.js"
     },
     "./schemas": {
       "types": "./dist/schemas/index.d.ts",
+      "import": "./dist/schemas/index.js",
       "default": "./dist/schemas/index.js"
     },
     "./core": {
       "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js",
       "default": "./dist/core/index.js"
     },
     "./services": {
       "types": "./dist/services/index.d.ts",
+      "import": "./dist/services/index.js",
       "default": "./dist/services/index.js"
     },
     "./utils": {
       "types": "./dist/utils/index.d.ts",
+      "import": "./dist/utils/index.js",
       "default": "./dist/utils/index.js"
     }
   },
+  "sideEffects": false,
   "files": [
     "dist",
     "README.md",
@@ -82,8 +118,9 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
+    "typecheck:dx": "tsc -p tests/dx/tsconfig.json --noEmit",
     "lint": "tsc --noEmit",
-    "prepublishOnly": "npm run build && npm run typecheck",
+    "prepublishOnly": "npm run build && npm run typecheck && npm run typecheck:dx",
     "publish:dry": "npm publish --dry-run --access public",
     "publish:npm": "npm publish --access public",
     "release": "npm run build && npm run typecheck && npm publish --access public",

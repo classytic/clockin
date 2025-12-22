@@ -149,6 +149,48 @@ await clockin.checkIn.record({ targetModel: 'Workshop', ... });
 - **Target model naming matters**: services use the models you register via `.withModels(...)`.
   That means your `targetModel` string **must match the key** you passed in `.withModels({ ... })` (e.g. `'Membership'`, `'Employee'`).
 - **Transactions**: pass `context.session` to operations for atomic multi-document updates.
+- **Check-out requires a check-in id**: `checkOut.record` needs a `checkInId` (tests should pass it explicitly).
+- **Half-day types**: schedule-aware detection can return `half_day_morning` or `half_day_afternoon` for employee check-outs.
+- **Occupancy location**: use `clockin.checkOut.getOccupancy`, not `clockin.analytics`.
+
+## 🧩 Type Exports
+
+ClockIn exports its full type surface from the main package entry. Import what you need from `@classytic/clockin`:
+
+```ts
+import type {
+  AttendanceTargetModel,
+  AttendanceRecord,
+  CheckInParams,
+  CheckOutParams,
+  OccupancyData,
+  ActiveSessionData,
+  CheckoutExpiredParams,
+} from '@classytic/clockin';
+```
+
+## ⏱️ Auto-checkout (batch helper)
+
+For scheduled jobs, use the built-in batch helper to close expired sessions safely in chunks:
+
+```ts
+await clockin.checkOut.checkoutExpired({
+  organizationId,
+  targetModel: 'Employee', // optional: process all registered models
+  before: new Date(),
+  limit: 500,
+});
+```
+
+## 📈 Indexing for scale
+
+For bursty multi-tenant usage, apply the recommended indexes on your member schema:
+
+```ts
+applyAttendanceIndexes(schema, { tenantField: 'organizationId' });
+```
+
+This includes real-time session indexes for `currentSession.isActive` and `currentSession.expectedCheckOutAt`.
 
 ## 🔌 Plugins & Events
 
@@ -167,4 +209,3 @@ See: `docs/PLUGINS_AND_EVENTS.md`
 ## 📝 License
 
 MIT
-
