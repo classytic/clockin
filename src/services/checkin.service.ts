@@ -20,11 +20,13 @@ import {
   InvalidMemberError,
   AttendanceNotEnabledError,
   TargetModelNotAllowedError,
+  MemberNotFoundError,
 } from '../errors/index.js';
 import { calculateExpectedCheckout } from '../utils/schedule.js';
 import { calculateEngagementLevel, calculateLoyaltyScore } from '../utils/engagement.js';
 import { calculateStreak, isStreakMilestone } from '../utils/streak.js';
 import { getLogger } from '../utils/logger.js';
+import { validateCheckInData } from '../utils/validators.js';
 import type { ClientSession } from 'mongoose';
 import type { Logger } from '../types.js';
 import type {
@@ -202,6 +204,16 @@ export class CheckInService {
       throw error;
     }
 
+    // Validate check-in data
+    try {
+      validateCheckInData(data);
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        return err(error);
+      }
+      throw error;
+    }
+
     // Validate member
     const validation = this.validate(member, targetModel, data);
     if (!validation.valid) {
@@ -265,7 +277,8 @@ export class CheckInService {
 
       // Atomic upsert with retry for E11000 duplicate key errors
       // This handles race conditions when two concurrent upserts try to create the same document
-      const upsertWithRetry = async (retries = 1): Promise<any> => {
+      const MAX_RETRIES = 3;
+      const upsertWithRetry = async (attempt = 0): Promise<any> => {
         try {
           return await AttendanceModel.findOneAndUpdate(
             {
@@ -294,8 +307,12 @@ export class CheckInService {
             }
           );
         } catch (error: any) {
-          // E11000 duplicate key error - retry once without upsert
-          if (error.code === 11000 && retries > 0) {
+          // E11000 duplicate key error - retry with exponential backoff
+          if (error.code === 11000 && attempt < MAX_RETRIES) {
+            // Exponential backoff: 10ms, 40ms, 160ms
+            const backoffMs = 10 * Math.pow(4, attempt);
+            await new Promise((resolve) => setTimeout(resolve, backoffMs));
+
             return await AttendanceModel.findOneAndUpdate(
               {
                 tenantId: organizationId,
@@ -318,14 +335,39 @@ export class CheckInService {
 
       const attendance = await upsertWithRetry();
 
+      // Validate attendance record was created/updated
+      if (!attendance) {
+        return err(
+          new ClockInError(
+            'ATTENDANCE_ERROR',
+            500,
+            'Failed to create or update attendance record'
+          )
+        );
+      }
+
       // Update uniqueDaysVisited count (derived from visitedDays array length)
-      attendance.uniqueDaysVisited = attendance.visitedDays?.length || 1;
+      attendance.uniqueDaysVisited = Array.isArray(attendance.visitedDays)
+        ? attendance.visitedDays.length
+        : 1;
       await attendance.save({ session });
 
-      // Get the added check-in
-      const addedCheckIn = attendance.checkIns.find(
-        (c: any) => c._id.toString() === checkInId.toString()
-      ) || checkInWithId;
+      // Get the added check-in - validate it exists
+      const addedCheckIn = Array.isArray(attendance.checkIns)
+        ? attendance.checkIns.find(
+            (c: any) => c._id?.toString() === checkInId.toString()
+          )
+        : null;
+
+      if (!addedCheckIn) {
+        return err(
+          new ClockInError(
+            'ATTENDANCE_ERROR',
+            500,
+            'Check-in entry was not properly saved to attendance record'
+          )
+        );
+      }
 
       // Calculate updated stats
       const stats = this.calculateStats(member, attendance, now);
@@ -350,6 +392,15 @@ export class CheckInService {
         },
         { new: true, session } // Pass session for transaction support
       );
+
+      // Validate member was updated
+      if (!updatedMember) {
+        return err(
+          new MemberNotFoundError(
+            `Member ${(member as any)._id} was not found or could not be updated`
+          )
+        );
+      }
 
       // Emit events
       if (events) {

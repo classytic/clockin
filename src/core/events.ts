@@ -216,33 +216,61 @@ export interface ClockInEventMap {
  * });
  * ```
  */
+/** Unsubscribe function returned by on/once */
+export type Unsubscribe = () => void;
+
 export class EventBus {
   private emitter = new EventEmitter();
+  private _isDestroyed = false;
 
-  constructor() {
-    this.emitter.setMaxListeners(50);
+  constructor(maxListeners = 100) {
+    this.emitter.setMaxListeners(maxListeners);
   }
 
   /**
-   * Subscribe to an event
+   * Check if the event bus has been destroyed
+   */
+  get isDestroyed(): boolean {
+    return this._isDestroyed;
+  }
+
+  /**
+   * Subscribe to an event.
+   * Returns an unsubscribe function for cleanup.
+   *
+   * @example
+   * ```typescript
+   * const unsubscribe = events.on('checkIn:recorded', handler);
+   * // Later, to clean up:
+   * unsubscribe();
+   * ```
    */
   on<E extends ClockInEventType>(
     event: E,
     handler: (payload: ClockInEventMap[E]) => void | Promise<void>
-  ): this {
+  ): Unsubscribe {
+    if (this._isDestroyed) {
+      console.warn('[EventBus] Attempted to subscribe to destroyed event bus');
+      return () => {}; // Return no-op unsubscribe
+    }
     this.emitter.on(event, handler);
-    return this;
+    return () => this.off(event, handler);
   }
 
   /**
-   * Subscribe once
+   * Subscribe once (auto-unsubscribes after first event).
+   * Returns an unsubscribe function for cleanup before event fires.
    */
   once<E extends ClockInEventType>(
     event: E,
     handler: (payload: ClockInEventMap[E]) => void | Promise<void>
-  ): this {
+  ): Unsubscribe {
+    if (this._isDestroyed) {
+      console.warn('[EventBus] Attempted to subscribe to destroyed event bus');
+      return () => {};
+    }
     this.emitter.once(event, handler);
-    return this;
+    return () => this.emitter.off(event, handler);
   }
 
   /**
@@ -260,6 +288,10 @@ export class EventBus {
    * Emit an event
    */
   emit<E extends ClockInEventType>(event: E, payload: Omit<ClockInEventMap[E], 'timestamp'>): void {
+    if (this._isDestroyed) {
+      console.warn('[EventBus] Attempted to emit on destroyed event bus');
+      return;
+    }
     const fullPayload = {
       ...payload,
       timestamp: new Date(),
@@ -268,10 +300,20 @@ export class EventBus {
   }
 
   /**
-   * Remove all listeners
+   * Remove all listeners and mark as destroyed.
+   * After calling this, new subscriptions will be no-ops.
    */
   clear(): void {
     this.emitter.removeAllListeners();
+  }
+
+  /**
+   * Destroy the event bus and prevent further use.
+   * This should be called when the ClockIn instance is destroyed.
+   */
+  destroy(): void {
+    this.clear();
+    this._isDestroyed = true;
   }
 
   /**
@@ -279,6 +321,15 @@ export class EventBus {
    */
   listenerCount(event: ClockInEventType): number {
     return this.emitter.listenerCount(event);
+  }
+
+  /**
+   * Get total listener count across all events
+   */
+  totalListenerCount(): number {
+    return this.emitter.eventNames().reduce((total, event) => {
+      return total + this.emitter.listenerCount(event);
+    }, 0);
   }
 }
 

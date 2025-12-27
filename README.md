@@ -35,7 +35,10 @@ import { createAttendanceSchema } from '@classytic/clockin';
 
 export const Attendance = mongoose.model(
   'Attendance',
-  createAttendanceSchema({ ttlDays: 730 }) // 0 disables TTL
+  createAttendanceSchema({
+    ttlDays: 730,        // 0 disables TTL
+    createIndexes: true, // opt-in to index creation (default: false)
+  })
 );
 ```
 
@@ -58,7 +61,11 @@ const membershipSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-applyAttendanceIndexes(membershipSchema, { tenantField: 'organizationId' });
+// Opt-in to index creation (recommended for production)
+applyAttendanceIndexes(membershipSchema, {
+  tenantField: 'organizationId',
+  createIndexes: true, // default: false
+});
 
 export const Membership = mongoose.model('Membership', membershipSchema);
 ```
@@ -129,6 +136,31 @@ await clockin.checkIn.record({
 });
 ```
 
+### Configuring Target Models with Deep Merge
+
+When you configure a target model with `.withTargetModel()`, your config is **deep merged** with smart defaults. This means you only need to specify the values you want to override—nested properties you don't specify are preserved from defaults:
+
+```ts
+const clockin = await ClockIn
+  .create()
+  .withModels({ Attendance, Membership })
+  .withTargetModel('Membership', {
+    detection: {
+      type: 'time-based',  // Only override the type
+      // rules.thresholds, scheduleSource, timeHints are preserved from defaults
+    },
+    autoCheckout: {
+      afterHours: 4,  // Only override afterHours
+      // enabled, maxSession are preserved from defaults
+    },
+  })
+  .build();
+```
+
+Default configurations are generated based on the target model name:
+- **Employee**: Uses `schedule-aware` detection with percentage-based thresholds
+- **Other models**: Use `time-based` detection with absolute hour thresholds
+
 ### Restricting Target Models (Optional)
 
 For stricter validation, restrict to a specific allowlist:
@@ -144,11 +176,44 @@ const clockin = await ClockIn
 await clockin.checkIn.record({ targetModel: 'Workshop', ... });
 ```
 
+## 🛡️ Error Handling
+
+ClockIn uses a **Result type** (inspired by Rust) for explicit error handling—no try/catch needed:
+
+```ts
+import { isOk, isErr } from '@classytic/clockin';
+
+const result = await clockin.checkIn.record({ ... });
+
+if (isOk(result)) {
+  console.log(result.value.stats.totalVisits);
+} else {
+  // result.error is a typed ClockInError
+  console.error(result.error.code, result.error.message);
+}
+```
+
+Common error types: `ValidationError`, `DuplicateCheckInError`, `AttendanceNotEnabledError`, `MemberNotFoundError`, `TargetModelNotAllowedError`.
+
+## 🔄 Transactions
+
+For atomic operations across multiple documents, pass a Mongoose session:
+
+```ts
+const session = await mongoose.startSession();
+await session.withTransaction(async () => {
+  await clockin.checkIn.record({
+    member,
+    targetModel: 'Membership',
+    context: { organizationId, session },
+  });
+});
+```
+
 ## 🧠 Important Notes
 
 - **Target model naming matters**: services use the models you register via `.withModels(...)`.
   That means your `targetModel` string **must match the key** you passed in `.withModels({ ... })` (e.g. `'Membership'`, `'Employee'`).
-- **Transactions**: pass `context.session` to operations for atomic multi-document updates.
 - **Check-out requires a check-in id**: `checkOut.record` needs a `checkInId` (tests should pass it explicitly).
 - **Half-day types**: schedule-aware detection can return `half_day_morning` or `half_day_afternoon` for employee check-outs.
 - **Occupancy location**: use `clockin.checkOut.getOccupancy`, not `clockin.analytics`.
@@ -184,18 +249,57 @@ await clockin.checkOut.checkoutExpired({
 
 ## 📈 Indexing for scale
 
-For bursty multi-tenant usage, apply the recommended indexes on your member schema:
+Index creation is **opt-in** to give you full control over your database indexes. For production usage with bursty multi-tenant workloads, enable indexes explicitly:
 
 ```ts
-applyAttendanceIndexes(schema, { tenantField: 'organizationId' });
+// On your Attendance schema
+createAttendanceSchema({
+  ttlDays: 730,
+  createIndexes: true,  // Creates query + TTL indexes
+});
+
+// On your target schemas (Membership, Employee, etc.)
+applyAttendanceIndexes(schema, {
+  tenantField: 'organizationId',
+  createIndexes: true,  // Creates session + stats indexes
+});
 ```
 
 This includes real-time session indexes for `currentSession.isActive` and `currentSession.expectedCheckOutAt`.
 
 ## 🔌 Plugins & Events
 
-- `clockin.on('checkIn:recorded', handler)` for typed events
-- `loggingPlugin()`, `metricsPlugin()`, `notificationPlugin()` for common integrations
+```ts
+// Subscribe to events (returns unsubscribe function)
+const unsubscribe = clockin.on('checkIn:recorded', (event) => {
+  console.log(`${event.data.member.name} checked in!`);
+});
+
+// Clean up when done
+unsubscribe();
+```
+
+Built-in plugins: `loggingPlugin()`, `metricsPlugin()`, `notificationPlugin()`
+
+### Plugin Fail-Fast Mode
+
+By default, plugin errors are logged but don't stop execution. Enable fail-fast to throw on first plugin error:
+
+```ts
+const clockin = await ClockIn.create()
+  .withModels({ Attendance })
+  .withPlugin(myPlugin)
+  .withPluginFailFast()  // Throws PluginError on failure
+  .build();
+```
+
+### Cleanup
+
+Always destroy the instance when shutting down to prevent memory leaks:
+
+```ts
+await clockin.destroy();
+```
 
 See: `docs/PLUGINS_AND_EVENTS.md`
 

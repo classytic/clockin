@@ -67,9 +67,11 @@ export {
   loggingPlugin,
   metricsPlugin,
   notificationPlugin,
+  PluginError,
   type ClockInPlugin,
   type PluginContext,
   type PluginHooks,
+  type PluginManagerOptions,
   type BeforeCheckInHookData,
   type BeforeCheckOutHookData,
   type CheckInHookData,
@@ -85,6 +87,7 @@ export {
 export {
   EventBus,
   createEventBus,
+  type Unsubscribe,
   type ClockInEventPayload,
   type ClockInEventMap,
   type ClockInEventType,
@@ -175,6 +178,16 @@ export {
 } from './enums.js';
 
 // ============================================================================
+// CONFIG UTILITIES - Configuration helpers
+// ============================================================================
+
+export {
+  deepMerge,
+  generateDefaultConfig,
+  getConfig,
+} from './config.js';
+
+// ============================================================================
 // ESSENTIAL TYPES - Commonly used types
 // ============================================================================
 
@@ -260,6 +273,7 @@ import { ClockIn, createClockIn } from './clockin.js';
 import { ClockInError } from './errors/index.js';
 import { ok, err, isOk, isErr } from './core/result.js';
 import { loggingPlugin, notificationPlugin } from './core/plugin.js';
+import { deepMerge } from './config.js';
 
 export default {
   ClockIn,
@@ -271,4 +285,5 @@ export default {
   isErr,
   loggingPlugin,
   notificationPlugin,
+  deepMerge,
 };

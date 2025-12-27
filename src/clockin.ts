@@ -21,7 +21,7 @@ import { PluginManager, type ClockInPlugin, type PluginContext } from './core/pl
 import { CheckInService } from './services/checkin.service.js';
 import { CheckOutService } from './services/checkout.service.js';
 import { AnalyticsService } from './services/analytics.service.js';
-import { generateDefaultConfig } from './config.js';
+import { generateDefaultConfig, deepMerge } from './config.js';
 import { ValidationError } from './errors/index.js';
 import { setLogger } from './utils/logger.js';
 import {
@@ -162,7 +162,8 @@ export class ClockIn {
 
   async destroy(): Promise<void> {
     await this._plugins.destroy(this.createContext());
-    this._events.clear();
+    // Properly destroy event bus (prevents memory leaks from lingering listeners)
+    this._events.destroy();
     this._container.clear();
   }
 }
@@ -179,6 +180,7 @@ export class ClockInBuilder {
   private _allowedTargetModels: string[] | undefined = undefined;
   private _memberResolver: MemberResolver | null = null;
   private _identifierFields: string[] | undefined = undefined;
+  private _pluginFailFast = false;
 
   constructor(options: ClockInOptions = {}) {
     this._options = options;
@@ -330,6 +332,18 @@ export class ClockInBuilder {
     return this;
   }
 
+  /**
+   * Enable fail-fast mode for plugins.
+   * When enabled, the first plugin hook failure will throw an error
+   * instead of logging and continuing.
+   *
+   * @param enabled - Whether to enable fail-fast mode (default: true)
+   */
+  withPluginFailFast(enabled = true): this {
+    this._pluginFailFast = enabled;
+    return this;
+  }
+
   withLogger(logger: Logger): this {
     this._options.logger = logger;
     setLogger(logger);
@@ -378,7 +392,7 @@ export class ClockInBuilder {
 
     for (const [name, config] of this._targetConfigs) {
       const defaults = generateDefaultConfig(name);
-      configRegistry.set(name, { ...defaults, ...config } as TargetModelConfig);
+      configRegistry.set(name, deepMerge(defaults, config));
     }
 
     // Target model allowlist (only register if configured)
@@ -397,7 +411,7 @@ export class ClockInBuilder {
     const events = createEventBus();
 
     // Plugins
-    const pluginManager = new PluginManager();
+    const pluginManager = new PluginManager({ failFast: this._pluginFailFast });
     for (const plugin of this._plugins) {
       pluginManager.register(plugin);
     }

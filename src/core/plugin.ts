@@ -140,6 +140,31 @@ type HookWithDataKey = keyof HookDataMap;
 // ============================================================================
 
 /**
+ * Plugin error that wraps the original error with plugin context
+ */
+export class PluginError extends Error {
+  constructor(
+    public readonly pluginName: string,
+    public readonly hook: string,
+    public readonly originalError: Error
+  ) {
+    super(`Plugin "${pluginName}" hook "${hook}" failed: ${originalError.message}`);
+    this.name = 'PluginError';
+  }
+}
+
+/**
+ * Plugin Manager options
+ */
+export interface PluginManagerOptions {
+  /**
+   * If true, throw an error when any plugin hook fails.
+   * If false (default), log the error and continue with other plugins.
+   */
+  failFast?: boolean;
+}
+
+/**
  * Plugin Manager
  *
  * Manages plugin lifecycle and hook execution
@@ -147,6 +172,20 @@ type HookWithDataKey = keyof HookDataMap;
 export class PluginManager {
   private plugins: ClockInPlugin[] = [];
   private initialized = false;
+  private readonly failFast: boolean;
+  private _lastErrors: PluginError[] = [];
+
+  constructor(options: PluginManagerOptions = {}) {
+    this.failFast = options.failFast ?? false;
+  }
+
+  /**
+   * Get the last errors from hook execution.
+   * Cleared on each runHook call.
+   */
+  get lastErrors(): readonly PluginError[] {
+    return this._lastErrors;
+  }
 
   /**
    * Register a plugin
@@ -183,13 +222,19 @@ export class PluginManager {
   }
 
   /**
-   * Run a hook on all plugins
+   * Run a hook on all plugins.
+   *
+   * In fail-fast mode, throws PluginError on first failure.
+   * Otherwise, logs errors and stores them in lastErrors.
    */
   async runHook<K extends HookWithDataKey>(
     hook: K,
     ctx: PluginContext,
     data: HookDataMap[K]
   ): Promise<void> {
+    // Clear previous errors
+    this._lastErrors = [];
+
     for (const plugin of this.plugins) {
       const hookFn = plugin[hook] as
         | ((ctx: PluginContext, data: HookDataMap[K]) => void | Promise<void>)
@@ -199,10 +244,18 @@ export class PluginManager {
           await hookFn(ctx, data);
         } catch (error) {
           const err = error as Error;
+          const pluginError = new PluginError(plugin.name, hook, err);
+
           ctx.logger.error(`Plugin "${plugin.name}" hook "${hook}" failed`, {
             error: err.message,
             stack: err.stack,
           });
+
+          this._lastErrors.push(pluginError);
+
+          if (this.failFast) {
+            throw pluginError;
+          }
         }
       }
     }

@@ -45,7 +45,6 @@ export const checkInEntrySchema = new Schema(
 
     expectedCheckOutAt: {
       type: Date,
-      index: true,
     },
 
     duration: {
@@ -235,7 +234,6 @@ export const currentSessionSchema = new Schema(
     isActive: {
       type: Boolean,
       default: false,
-      index: true,
     },
 
     checkInId: {
@@ -440,12 +438,19 @@ export const attendanceIndexes = [
  *
  * @param schema - Mongoose schema
  * @param options - Configuration options
+ * @param options.tenantField - Field name for tenant/organization ID (default: 'organizationId')
+ * @param options.createIndexes - Whether to create indexes (default: false). Set to true to opt-in to index creation.
  */
 export function applyAttendanceIndexes(
   schema: MongooseSchema,
-  options: { tenantField?: string } = {}
+  options: { tenantField?: string; createIndexes?: boolean } = {}
 ): void {
-  const { tenantField = 'organizationId' } = options;
+  const { tenantField = 'organizationId', createIndexes = false } = options;
+
+  // Only create indexes if explicitly requested
+  if (!createIndexes) {
+    return;
+  }
 
   // Historical stats indexes
   schema.index({ [tenantField]: 1, 'attendanceStats.engagementLevel': 1 });
@@ -467,15 +472,19 @@ export function applyAttendanceIndexes(
  * Use this to create your own Attendance model
  *
  * @param options - Schema options
+ * @param options.ttlDays - TTL for documents in days (default: 730). Set to 0 to disable TTL.
+ * @param options.additionalFields - Additional fields to add to the schema
+ * @param options.createIndexes - Whether to create indexes (default: false). Set to true to opt-in to index creation.
  * @returns Mongoose schema
  */
 export function createAttendanceSchema(
   options: {
     ttlDays?: number;
     additionalFields?: Record<string, unknown>;
+    createIndexes?: boolean;
   } = {}
 ): MongooseSchema {
-  const { ttlDays = 730, additionalFields = {} } = options;
+  const { ttlDays = 730, additionalFields = {}, createIndexes = false } = options;
 
   const schema = new Schema(
     {
@@ -483,7 +492,6 @@ export function createAttendanceSchema(
         type: Schema.Types.ObjectId,
         ref: 'Organization',
         required: true,
-        index: true,
       },
 
       targetModel: {
@@ -501,13 +509,11 @@ export function createAttendanceSchema(
         type: Schema.Types.ObjectId,
         required: true,
         refPath: 'targetModel',
-        index: true,
       },
 
       year: {
         type: Number,
         required: true,
-        index: true,
       },
 
       month: {
@@ -515,7 +521,6 @@ export function createAttendanceSchema(
         required: true,
         min: 1,
         max: 12,
-        index: true,
       },
 
       checkIns: {
@@ -600,20 +605,22 @@ export function createAttendanceSchema(
     }
   );
 
-  // Indexes
-  schema.index(
-    { tenantId: 1, targetModel: 1, targetId: 1, year: 1, month: 1 },
-    { unique: true }
-  );
-  schema.index({ tenantId: 1, year: 1, month: 1 });
-  schema.index({ tenantId: 1, targetModel: 1, year: 1, month: 1 });
-  schema.index({ tenantId: 1, targetModel: 1, targetId: 1, year: -1, month: -1 });
-  schema.index({ tenantId: 1, 'checkIns.timestamp': 1 });
-  schema.index({ 'checkIns.notes': 'text' });
+  // Indexes - only create if explicitly requested
+  if (createIndexes) {
+    schema.index(
+      { tenantId: 1, targetModel: 1, targetId: 1, year: 1, month: 1 },
+      { unique: true }
+    );
+    schema.index({ tenantId: 1, year: 1, month: 1 });
+    schema.index({ tenantId: 1, targetModel: 1, year: 1, month: 1 });
+    schema.index({ tenantId: 1, targetModel: 1, targetId: 1, year: -1, month: -1 });
+    schema.index({ tenantId: 1, 'checkIns.timestamp': 1 });
+    schema.index({ 'checkIns.notes': 'text' });
 
-  // TTL index
-  if (ttlDays > 0) {
-    schema.index({ createdAt: 1 }, { expireAfterSeconds: ttlDays * 24 * 60 * 60 });
+    // TTL index
+    if (ttlDays > 0) {
+      schema.index({ createdAt: 1 }, { expireAfterSeconds: ttlDays * 24 * 60 * 60 });
+    }
   }
 
   // Virtuals

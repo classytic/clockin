@@ -102,6 +102,107 @@ describe('ClockIn Builder', () => {
     expect(clockin).toBeDefined();
     expect(clockin.checkIn).toBeDefined();
   });
+
+  it('should deep merge withTargetModel config preserving nested defaults', async () => {
+    // This test verifies the fix for shallow merge issue
+    // When configuring only detection.type, other nested properties should be preserved
+    const clockin = await ClockIn
+      .create({ debug: false })
+      .withModels({ Attendance, Membership })
+      .withTargetModel('Membership', {
+        detection: {
+          type: 'time-based',  // Only set this
+        },
+      })
+      .build();
+
+    // Get the config registry from the container
+    const configRegistry = clockin.container.get<Map<string, any>>('configRegistry');
+    const membershipConfig = configRegistry.get('Membership');
+
+    expect(membershipConfig).toBeDefined();
+    expect(membershipConfig.detection.type).toBe('time-based');
+
+    // These should be preserved from defaults (not lost due to shallow merge)
+    expect(membershipConfig.detection.rules).toBeDefined();
+    expect(membershipConfig.detection.rules.thresholds).toBeDefined();
+    expect(membershipConfig.detection.rules.thresholds.fullDay).toBe(1);
+    expect(membershipConfig.detection.rules.thresholds.overtime).toBe(10);
+    expect(membershipConfig.detection.rules.thresholds.minimal).toBe(0.5);
+    expect(membershipConfig.detection.rules.defaultType).toBe('full_day');
+
+    // autoCheckout should also be preserved
+    expect(membershipConfig.autoCheckout).toBeDefined();
+    expect(membershipConfig.autoCheckout.enabled).toBe(true);
+    expect(membershipConfig.autoCheckout.afterHours).toBe(6);
+
+    // validation should also be preserved
+    expect(membershipConfig.validation).toBeDefined();
+    expect(membershipConfig.validation.allowWeekends).toBe(true);
+  });
+
+  it('should deep merge nested thresholds while preserving other threshold values', async () => {
+    const clockin = await ClockIn
+      .create({ debug: false })
+      .withModels({ Attendance, Membership })
+      .withTargetModel('Membership', {
+        detection: {
+          type: 'time-based',
+          rules: {
+            thresholds: {
+              fullDay: 2,  // Override only fullDay
+            },
+          },
+        },
+      })
+      .build();
+
+    const configRegistry = clockin.container.get<Map<string, any>>('configRegistry');
+    const config = configRegistry.get('Membership');
+
+    // The overridden value should be applied
+    expect(config.detection.rules.thresholds.fullDay).toBe(2);
+
+    // Other threshold values should be preserved from defaults
+    expect(config.detection.rules.thresholds.overtime).toBe(10);
+    expect(config.detection.rules.thresholds.minimal).toBe(0.5);
+
+    // defaultType should also be preserved
+    expect(config.detection.rules.defaultType).toBe('full_day');
+  });
+
+  it('should deep merge Employee config with schedule-aware defaults', async () => {
+    const clockin = await ClockIn
+      .create({ debug: false })
+      .withModels({ Attendance, Employee })
+      .withTargetModel('Employee', {
+        autoCheckout: {
+          afterHours: 10,  // Override only afterHours
+        },
+      })
+      .build();
+
+    const configRegistry = clockin.container.get<Map<string, any>>('configRegistry');
+    const config = configRegistry.get('Employee');
+
+    // Should use Employee-specific defaults
+    expect(config.detection.type).toBe('schedule-aware');
+    expect(config.detection.scheduleSource).toBe('workSchedule');
+
+    // The overridden value
+    expect(config.autoCheckout.afterHours).toBe(10);
+
+    // Preserved defaults
+    expect(config.autoCheckout.enabled).toBe(true);
+    expect(config.autoCheckout.maxSession).toBe(12);
+
+    // Employee-specific detection rules should be preserved
+    expect(config.detection.rules.thresholds.overtime).toBe(1.1);
+    expect(config.detection.rules.thresholds.fullDay).toBe(0.75);
+    expect(config.detection.rules.thresholds.halfDay).toBe(0.4);
+    expect(config.detection.rules.fallback).toBeDefined();
+    expect(config.detection.rules.fallback.standardHours).toBe(8);
+  });
 });
 
 // ============================================================================

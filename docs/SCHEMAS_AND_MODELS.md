@@ -21,22 +21,29 @@ import { createAttendanceSchema } from '@classytic/clockin';
 
 export const Attendance = mongoose.model(
   'Attendance',
-  createAttendanceSchema({ ttlDays: 730 })
+  createAttendanceSchema({
+    ttlDays: 730,
+    createIndexes: true, // opt-in to index creation (default: false)
+  })
 );
 ```
 
-### Required indexes
+### Indexes (opt-in)
 
-`createAttendanceSchema()` includes these indexes:
+Index creation is **opt-in** via the `createIndexes` option. When enabled, `createAttendanceSchema()` creates:
 - Unique: `(tenantId, targetModel, targetId, year, month)`
 - Query: `(tenantId, year, month)`, `(tenantId, targetModel, targetId, year desc, month desc)`
 - Time: `(tenantId, checkIns.timestamp)`
+- Text: `checkIns.notes`
+- TTL: `createdAt` (if `ttlDays > 0`)
+
+**Note:** If you don't enable `createIndexes`, you should define your own indexes based on your query patterns.
 
 ---
 
 ## Target models (Membership / Employee / Student / ...)
 
-To make a model “ClockIn-enabled”, add `commonAttendanceFields` and apply indexes:
+To make a model "ClockIn-enabled", add `commonAttendanceFields` and optionally apply indexes:
 
 ```ts
 import mongoose from 'mongoose';
@@ -47,7 +54,11 @@ const schema = new mongoose.Schema({
   ...commonAttendanceFields,
 });
 
-applyAttendanceIndexes(schema, { tenantField: 'organizationId' });
+// Opt-in to index creation (recommended for production)
+applyAttendanceIndexes(schema, {
+  tenantField: 'organizationId',
+  createIndexes: true, // default: false
+});
 
 export const Membership = mongoose.model('Membership', schema);
 ```
@@ -64,8 +75,11 @@ These are used by services for:
 - occupancy and session handling
 - analytics queries (engagement/streak)
 
-`applyAttendanceIndexes()` also adds real-time session indexes for `currentSession.isActive`
-and `currentSession.expectedCheckOutAt` to keep occupancy and auto-checkout queries fast.
+When `createIndexes: true`, `applyAttendanceIndexes()` creates:
+- Stats indexes: `(tenantField, attendanceStats.engagementLevel)`, `(tenantField, attendanceStats.lastVisitedAt)`, etc.
+- Session indexes: `(tenantField, currentSession.isActive)`, `(tenantField, currentSession.isActive, currentSession.expectedCheckOutAt)`
+
+These keep occupancy and auto-checkout queries fast.
 
 ---
 

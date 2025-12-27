@@ -321,6 +321,190 @@ export function assertValidCheckInTiming(
   }
 }
 
+/**
+ * Check-in data validation configuration
+ */
+export interface CheckInDataValidationConfig {
+  /** Maximum notes length (default: 1000) */
+  maxNotesLength?: number;
+  /** Whether to validate location data (default: true) */
+  validateLocation?: boolean;
+}
+
+/**
+ * Validate check-in data object
+ *
+ * Validates:
+ * - method (if provided, must be valid CheckInMethod)
+ * - timestamp (if provided, must be valid Date, not in future)
+ * - notes (if provided, must be string with max length)
+ * - location (if provided, must have valid lat/lng ranges)
+ * - device (if provided, must be object)
+ *
+ * @param data - Check-in data object
+ * @param config - Validation configuration
+ * @throws ValidationError if any field is invalid
+ */
+export function validateCheckInData(
+  data: {
+    method?: string;
+    timestamp?: Date;
+    notes?: string;
+    location?: { lat?: number; lng?: number; accuracy?: number };
+    device?: { type?: string; platform?: string; appVersion?: string };
+    metadata?: Record<string, unknown>;
+  } | undefined,
+  config: CheckInDataValidationConfig = {}
+): void {
+  if (!data) return; // All fields are optional
+
+  const { maxNotesLength = 1000, validateLocation = true } = config;
+
+  // Validate method
+  if (data.method !== undefined) {
+    validateCheckInMethod(data.method);
+  }
+
+  // Validate timestamp
+  if (data.timestamp !== undefined) {
+    if (!(data.timestamp instanceof Date) || isNaN(data.timestamp.getTime())) {
+      throw new ValidationError('timestamp must be a valid Date', {
+        field: 'timestamp',
+        value: data.timestamp,
+      });
+    }
+
+    // Don't allow future timestamps (more than 1 minute ahead)
+    const maxAllowedTime = Date.now() + 60 * 1000;
+    if (data.timestamp.getTime() > maxAllowedTime) {
+      throw new ValidationError('timestamp cannot be in the future', {
+        field: 'timestamp',
+        value: data.timestamp,
+      });
+    }
+  }
+
+  // Validate notes
+  if (data.notes !== undefined) {
+    if (typeof data.notes !== 'string') {
+      throw new ValidationError('notes must be a string', {
+        field: 'notes',
+        value: typeof data.notes,
+      });
+    }
+
+    if (data.notes.length > maxNotesLength) {
+      throw new ValidationError(`notes cannot exceed ${maxNotesLength} characters (got ${data.notes.length})`, {
+        field: 'notes',
+        value: data.notes.length,
+      });
+    }
+  }
+
+  // Validate location
+  if (validateLocation && data.location !== undefined) {
+    if (typeof data.location !== 'object' || data.location === null) {
+      throw new ValidationError('location must be an object', {
+        field: 'location',
+      });
+    }
+
+    const { lat, lng, accuracy } = data.location;
+
+    if (lat !== undefined) {
+      if (typeof lat !== 'number' || isNaN(lat) || lat < -90 || lat > 90) {
+        throw new ValidationError('location.lat must be between -90 and 90', {
+          field: 'location.lat',
+          value: lat,
+        });
+      }
+    }
+
+    if (lng !== undefined) {
+      if (typeof lng !== 'number' || isNaN(lng) || lng < -180 || lng > 180) {
+        throw new ValidationError('location.lng must be between -180 and 180', {
+          field: 'location.lng',
+          value: lng,
+        });
+      }
+    }
+
+    if (accuracy !== undefined) {
+      if (typeof accuracy !== 'number' || isNaN(accuracy) || accuracy < 0) {
+        throw new ValidationError('location.accuracy must be a non-negative number', {
+          field: 'location.accuracy',
+          value: accuracy,
+        });
+      }
+    }
+  }
+
+  // Validate device
+  if (data.device !== undefined) {
+    if (typeof data.device !== 'object' || data.device === null) {
+      throw new ValidationError('device must be an object', {
+        field: 'device',
+      });
+    }
+
+    const { type, platform, appVersion } = data.device;
+
+    if (type !== undefined && typeof type !== 'string') {
+      throw new ValidationError('device.type must be a string', {
+        field: 'device.type',
+      });
+    }
+
+    if (platform !== undefined && typeof platform !== 'string') {
+      throw new ValidationError('device.platform must be a string', {
+        field: 'device.platform',
+      });
+    }
+
+    if (appVersion !== undefined && typeof appVersion !== 'string') {
+      throw new ValidationError('device.appVersion must be a string', {
+        field: 'device.appVersion',
+      });
+    }
+  }
+}
+
+/**
+ * Validate days parameter for analytics queries
+ *
+ * @param days - Number of days
+ * @param max - Maximum allowed value (default: 365)
+ * @throws ValidationError if invalid
+ */
+export function validateDaysParameter(days?: number, max = 365): void {
+  if (days !== undefined) {
+    if (typeof days !== 'number' || !Number.isInteger(days) || days < 1 || days > max) {
+      throw new ValidationError(`days must be an integer between 1 and ${max}`, {
+        field: 'days',
+        value: days,
+      });
+    }
+  }
+}
+
+/**
+ * Validate limit parameter for queries
+ *
+ * @param limit - Query limit
+ * @param max - Maximum allowed value (default: 1000)
+ * @throws ValidationError if invalid
+ */
+export function validateLimitParameter(limit?: number, max = 1000): void {
+  if (limit !== undefined) {
+    if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > max) {
+      throw new ValidationError(`limit must be an integer between 1 and ${max}`, {
+        field: 'limit',
+        value: limit,
+      });
+    }
+  }
+}
+
 export default {
   validateCheckInEligibility,
   validateCheckInTiming,
@@ -333,5 +517,8 @@ export default {
   validateMonth,
   assertValidMember,
   assertValidCheckInTiming,
+  validateCheckInData,
+  validateDaysParameter,
+  validateLimitParameter,
 };
 

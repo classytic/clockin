@@ -206,29 +206,78 @@ export function getConfig(targetModel: string, container?: ConfigContainer): Tar
 // ============================================================================
 
 /**
- * Deep merge two objects
+ * Check if a value is a plain object (not Date, Array, Map, Set, etc.)
  */
-export function deepMerge<T>(target: T, source: DeepPartial<T>): T {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object') return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+/**
+ * Deep merge two objects with circular reference protection.
+ *
+ * - Plain objects are recursively merged
+ * - Arrays, Dates, Maps, Sets are replaced (not merged)
+ * - Circular references are detected and cause an error
+ * - Undefined values in source are ignored (preserves target value)
+ *
+ * @param target - The target object (provides defaults)
+ * @param source - The source object (provides overrides)
+ * @param seen - Internal WeakSet for circular reference detection
+ * @throws Error if circular reference is detected
+ */
+export function deepMerge<T>(
+  target: T,
+  source: DeepPartial<T>,
+  seen: WeakSet<object> = new WeakSet()
+): T {
+  // Handle null/undefined source - return target as-is
+  if (source === null || source === undefined) {
+    return target;
+  }
+
+  // Handle non-object source - return source (override)
+  if (typeof source !== 'object') {
+    return source as unknown as T;
+  }
+
+  // Circular reference detection
+  if (seen.has(source as object)) {
+    throw new Error('Circular reference detected in deepMerge');
+  }
+  seen.add(source as object);
+
+  // If source is not a plain object, replace entirely (Date, Array, Map, Set, etc.)
+  if (!isPlainObject(source)) {
+    return source as unknown as T;
+  }
+
+  // If target is not a plain object, replace with source
+  if (!isPlainObject(target)) {
+    return source as unknown as T;
+  }
+
   const result = { ...target } as T & Record<string, unknown>;
 
   for (const key in source) {
     const sourceValue = (source as Record<string, unknown>)[key];
     const targetValue = (result as Record<string, unknown>)[key];
 
-    if (
-      sourceValue !== undefined &&
-      sourceValue !== null &&
-      typeof sourceValue === 'object' &&
-      !Array.isArray(sourceValue) &&
-      typeof targetValue === 'object' &&
-      targetValue !== null &&
-      !Array.isArray(targetValue)
-    ) {
+    // Skip undefined values in source (preserve target default)
+    if (sourceValue === undefined) {
+      continue;
+    }
+
+    // If both are plain objects, recurse
+    if (isPlainObject(sourceValue) && isPlainObject(targetValue)) {
       (result as Record<string, unknown>)[key] = deepMerge(
-        targetValue as Record<string, unknown>,
-        sourceValue as DeepPartial<Record<string, unknown>>
+        targetValue,
+        sourceValue as DeepPartial<Record<string, unknown>>,
+        seen
       );
-    } else if (sourceValue !== undefined) {
+    } else {
+      // Replace with source value (handles null, arrays, dates, primitives, etc.)
       (result as Record<string, unknown>)[key] = sourceValue;
     }
   }

@@ -12,6 +12,12 @@ import { Result, ok, err } from '../core/result.js';
 import { ClockInError, ValidationError } from '../errors/index.js';
 import { toObjectId, buildAttendanceMatch } from '../utils/query-builders.js';
 import { getLogger } from '../utils/logger.js';
+import {
+  validateDaysParameter,
+  validateLimitParameter,
+  validateYear,
+  validateMonth,
+} from '../utils/validators.js';
 import type { ClientSession } from 'mongoose';
 import type { Logger } from '../types.js';
 import type {
@@ -140,6 +146,16 @@ export class AnalyticsService {
   }): Promise<Result<DailyTrendEntry[], ClockInError>> {
     const { organizationId, days = 30, targetModel } = params;
 
+    // Validate parameters
+    try {
+      validateDaysParameter(days, 365);
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        return err(error);
+      }
+      throw error;
+    }
+
     try {
       const AttendanceModel = this.container.get<mongoose.Model<any>>('AttendanceModel');
 
@@ -195,6 +211,17 @@ export class AnalyticsService {
     targetModel?: string;
   }): Promise<Result<PeriodStats, ClockInError>> {
     const { organizationId, year, month, targetModel } = params;
+
+    // Validate parameters
+    try {
+      validateYear(year);
+      validateMonth(month);
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        return err(error);
+      }
+      throw error;
+    }
 
     try {
       const AttendanceModel = this.container.get<mongoose.Model<any>>('AttendanceModel');
