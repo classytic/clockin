@@ -309,6 +309,7 @@ See: `docs/PLUGINS_AND_EVENTS.md`
 - `docs/SINGLE_TENANT.md` — single-tenant setup
 - `docs/SCHEMAS_AND_MODELS.md` — schema details + indexing
 - `docs/PLUGINS_AND_EVENTS.md` — plugin hooks + EventBus
+- `docs/CORRECTIONS.md` — correction requests API
 
 ## 📝 License
 

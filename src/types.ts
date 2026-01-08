@@ -346,6 +346,8 @@ export interface UserReference {
   userId?: ObjectId;
   name?: string;
   role?: string;
+  userName?: string;
+  userRole?: string;
 }
 
 /** Location data */
@@ -818,11 +820,13 @@ export interface SubmitCorrectionRequestParams {
   /** Member ID */
   memberId: ObjectIdLike;
   /** Organization ID */
-  organizationId: ObjectIdLike;
+  organizationId?: ObjectIdLike;
   /** Year */
   year: number;
   /** Month */
   month: number;
+  /** Target model (required when creating a new attendance record) */
+  targetModel?: AttendanceTargetModel;
   /** Request type */
   requestType: CorrectionRequestType;
   /** Check-in ID (if applicable) */
@@ -836,6 +840,8 @@ export interface SubmitCorrectionRequestParams {
   };
   /** Priority */
   priority?: Priority;
+  /** Operation context (session, user metadata) */
+  context?: OperationContext;
 }
 
 /** Review correction request parameters */
@@ -848,6 +854,38 @@ export interface ReviewCorrectionRequestParams {
   approved: boolean;
   /** Review notes */
   notes?: string;
+  /** Operation context */
+  context: OperationContext;
+}
+
+/** List correction requests parameters */
+export interface ListCorrectionRequestsParams {
+  /** Attendance record ID */
+  attendanceId?: ObjectIdLike;
+  /** Member ID (used with organizationId + year/month) */
+  memberId?: ObjectIdLike;
+  /** Organization ID (required if attendanceId is not provided) */
+  organizationId?: ObjectIdLike;
+  /** Year (required if attendanceId is not provided) */
+  year?: number;
+  /** Month (required if attendanceId is not provided) */
+  month?: number;
+  /** Target model name */
+  targetModel?: AttendanceTargetModel;
+  /** Filter by status */
+  status?: CorrectionRequestStatus;
+  /** Filter by request type */
+  requestType?: CorrectionRequestType;
+  /** Operation context */
+  context?: OperationContext;
+}
+
+/** Apply correction request parameters */
+export interface ApplyCorrectionRequestParams {
+  /** Attendance record ID */
+  attendanceId: ObjectIdLike;
+  /** Request ID */
+  requestId: ObjectIdLike;
   /** Operation context */
   context: OperationContext;
 }

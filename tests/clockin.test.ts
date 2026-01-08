@@ -15,6 +15,7 @@ import {
   isOk,
   isErr,
   unwrap,
+  CORRECTION_REQUEST_TYPE,
 } from '../src/index.js';
 import { Attendance, Membership, Employee, createTestMember, createTestEmployee, createTestMemberWithoutOrg } from './models.js';
 
@@ -534,6 +535,108 @@ describe('CheckOut Service', () => {
       expect(occupancy.value.total).toBe(2);
       expect(occupancy.value.byType['Membership']?.count).toBe(2);
     }
+  });
+});
+
+// ============================================================================
+// CORRECTIONS TESTS
+// ============================================================================
+
+describe('Correction Requests', () => {
+  let clockin: ClockIn;
+
+  beforeAll(async () => {
+    clockin = await ClockIn
+      .create({ debug: false })
+      .withModels({ Attendance, Membership })
+      .build();
+  });
+
+  it('should submit, review, and apply a correction request', async () => {
+    const member = await createTestMember(testOrgId);
+
+    const checkInResult = await clockin.checkIn.record({
+      member,
+      targetModel: 'Membership',
+      context: { organizationId: testOrgId },
+    });
+
+    expect(isOk(checkInResult)).toBe(true);
+
+    const attendance = await Attendance.findOne({
+      tenantId: testOrgId,
+      targetId: member._id,
+    });
+
+    expect(attendance).toBeTruthy();
+    if (!attendance) {
+      return;
+    }
+
+    const checkIn = attendance.checkIns[0];
+    const originalTime = new Date(checkIn.timestamp);
+    const newTime = new Date(originalTime.getTime() - 60 * 60 * 1000);
+
+    const submitResult = await clockin.corrections.submit({
+      memberId: member._id,
+      organizationId: testOrgId,
+      year: attendance.year,
+      month: attendance.month,
+      targetModel: 'Membership',
+      requestType: CORRECTION_REQUEST_TYPE.UPDATE_CHECK_IN_TIME,
+      checkInId: checkIn._id,
+      proposedChanges: {
+        checkInTime: newTime,
+        reason: 'Device time was off',
+      },
+    });
+
+    expect(isOk(submitResult)).toBe(true);
+    if (!isOk(submitResult)) {
+      return;
+    }
+
+    const listResult = await clockin.corrections.list({
+      attendanceId: attendance._id,
+    });
+
+    expect(isOk(listResult)).toBe(true);
+    if (isOk(listResult)) {
+      expect(listResult.value.length).toBe(1);
+    }
+
+    const reviewerId = new mongoose.Types.ObjectId();
+    const reviewResult = await clockin.corrections.review({
+      attendanceId: attendance._id,
+      requestId: submitResult.value._id!,
+      approved: true,
+      notes: 'Approved',
+      context: {
+        userId: reviewerId,
+        userName: 'Admin',
+        userRole: 'admin',
+        organizationId: testOrgId,
+      },
+    });
+
+    expect(isOk(reviewResult)).toBe(true);
+
+    const applyResult = await clockin.corrections.apply({
+      attendanceId: attendance._id,
+      requestId: submitResult.value._id!,
+      context: {
+        userId: reviewerId,
+        userName: 'Admin',
+        userRole: 'admin',
+        organizationId: testOrgId,
+      },
+    });
+
+    expect(isOk(applyResult)).toBe(true);
+
+    const updated = await Attendance.findById(attendance._id);
+    expect(updated?.correctionRequests[0]?.status).toBe('applied');
+    expect(updated?.checkIns[0]?.timestamp?.toISOString()).toBe(newTime.toISOString());
   });
 });
 

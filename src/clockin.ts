@@ -21,6 +21,7 @@ import { PluginManager, type ClockInPlugin, type PluginContext } from './core/pl
 import { CheckInService } from './services/checkin.service.js';
 import { CheckOutService } from './services/checkout.service.js';
 import { AnalyticsService } from './services/analytics.service.js';
+import { CorrectionRequestService } from './services/corrections.service.js';
 import { generateDefaultConfig, deepMerge } from './config.js';
 import { ValidationError } from './errors/index.js';
 import { setLogger } from './utils/logger.js';
@@ -74,6 +75,7 @@ export class ClockIn {
   public readonly checkIn: CheckInService;
   public readonly checkOut: CheckOutService;
   public readonly analytics: AnalyticsService;
+  public readonly corrections: CorrectionRequestService;
 
   private constructor(
     container: Container,
@@ -98,6 +100,7 @@ export class ClockIn {
     this.checkIn = new CheckInService(container);
     this.checkOut = new CheckOutService(container);
     this.analytics = new AnalyticsService(container);
+    this.corrections = new CorrectionRequestService(container);
   }
 
   // ============ STATIC ============

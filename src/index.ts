@@ -140,6 +140,18 @@ export {
 } from './errors/index.js';
 
 // ============================================================================
+// CORRECTIONS - Correction request service and functional API
+// ============================================================================
+
+export {
+  CorrectionRequestService,
+  submitCorrectionRequest,
+  listCorrectionRequests,
+  reviewCorrectionRequest,
+  applyCorrectionRequest,
+} from './services/corrections.service.js';
+
+// ============================================================================
 // ENUMS - Constants
 // ============================================================================
 
@@ -232,6 +244,8 @@ export type {
   BulkOperationResult,
   SubmitCorrectionRequestParams,
   ReviewCorrectionRequestParams,
+  ListCorrectionRequestsParams,
+  ApplyCorrectionRequestParams,
   // Analytics types
   DashboardParams,
   DashboardResult,
