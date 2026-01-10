@@ -427,7 +427,7 @@ export interface CorrectionRequest {
 /** Monthly attendance record document */
 export interface AttendanceRecord {
   _id?: ObjectId;
-  tenantId: ObjectId;
+  organizationId: ObjectId;
   targetModel: AttendanceTargetModel;
   targetId: ObjectId;
   year: number;

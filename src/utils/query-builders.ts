@@ -48,7 +48,7 @@ export function buildAttendanceMatch(params: {
   month?: number;
 }): Record<string, unknown> {
   const match: Record<string, unknown> = {
-    tenantId: toObjectId(params.organizationId),
+    organizationId: toObjectId(params.organizationId),
   };
 
   if (params.targetModel) {

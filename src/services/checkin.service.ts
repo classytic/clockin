@@ -282,7 +282,7 @@ export class CheckInService {
         try {
           return await AttendanceModel.findOneAndUpdate(
             {
-              tenantId: organizationId,
+              organizationId: organizationId,
               targetModel,
               targetId: (member as any)._id,
               year,
@@ -293,7 +293,7 @@ export class CheckInService {
               $inc: { monthlyTotal: 1 },
               $addToSet: { visitedDays: dayString },
               $setOnInsert: {
-                tenantId: organizationId,
+                organizationId: organizationId,
                 targetModel,
                 targetId: (member as any)._id,
                 year,
@@ -315,7 +315,7 @@ export class CheckInService {
 
             return await AttendanceModel.findOneAndUpdate(
               {
-                tenantId: organizationId,
+                organizationId: organizationId,
                 targetModel,
                 targetId: (member as any)._id,
                 year,

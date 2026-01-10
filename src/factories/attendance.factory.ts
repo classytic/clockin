@@ -33,8 +33,8 @@ function toObjectId(id: ObjectIdLike): mongoose.Types.ObjectId {
  * Parameters for creating an attendance record.
  */
 export interface CreateAttendanceRecordParams {
-  /** Tenant/organization ID */
-  tenantId: ObjectIdLike;
+  /** Organization ID */
+  organizationId: ObjectIdLike;
 
   /** Target model name (e.g., 'Membership', 'Employee') */
   targetModel: string;
@@ -58,14 +58,14 @@ export interface CreateAttendanceRecordParams {
  * ```typescript
  * // Create a new attendance record for the current period
  * const record = AttendanceRecordFactory.createForPeriod({
- *   tenantId: organizationId,
+ *   organizationId,
  *   targetModel: 'Membership',
  *   targetId: memberId,
  * });
  *
  * // Create for a specific period
  * const record = AttendanceRecordFactory.createForPeriod({
- *   tenantId: organizationId,
+ *   organizationId,
  *   targetModel: 'Employee',
  *   targetId: employeeId,
  *   year: 2024,
@@ -83,7 +83,7 @@ export class AttendanceRecordFactory {
    * @returns Partial attendance record
    */
   static createForPeriod(params: CreateAttendanceRecordParams): {
-    tenantId: mongoose.Types.ObjectId;
+    organizationId: mongoose.Types.ObjectId;
     targetModel: string;
     targetId: mongoose.Types.ObjectId;
     year: number;
@@ -96,7 +96,7 @@ export class AttendanceRecordFactory {
   } {
     const now = new Date();
     return {
-      tenantId: toObjectId(params.tenantId),
+      organizationId: toObjectId(params.organizationId),
       targetModel: params.targetModel,
       targetId: toObjectId(params.targetId),
       year: params.year ?? now.getFullYear(),

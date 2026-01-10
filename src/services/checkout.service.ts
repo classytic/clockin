@@ -179,7 +179,7 @@ export class CheckOutService {
 
       // Find attendance record with the check-in
       let attendanceQuery = AttendanceModel.findOne({
-        tenantId: organizationId,
+        organizationId: organizationId,
         targetModel,
         targetId: (member as any)._id,
         'checkIns._id': checkInId,

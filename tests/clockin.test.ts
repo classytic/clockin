@@ -390,7 +390,7 @@ describe('CheckOut Service', () => {
     const checkInId = unwrap(checkInResult).checkIn._id;
 
     const attendance = await Attendance.findOne({
-      tenantId: testOrgId,
+      organizationId: testOrgId,
       targetModel: 'Membership',
       targetId: member._id,
     });
@@ -457,7 +457,7 @@ describe('CheckOut Service', () => {
     expect(refreshedMember?.currentSession?.isActive).toBe(false);
 
     const attendance = await Attendance.findOne({
-      tenantId: testOrgId,
+      organizationId: testOrgId,
       targetModel: 'Membership',
       targetId: member._id,
     });
@@ -564,7 +564,7 @@ describe('Correction Requests', () => {
     expect(isOk(checkInResult)).toBe(true);
 
     const attendance = await Attendance.findOne({
-      tenantId: testOrgId,
+      organizationId: testOrgId,
       targetId: member._id,
     });
 

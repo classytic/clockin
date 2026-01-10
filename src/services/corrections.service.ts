@@ -196,7 +196,7 @@ export class CorrectionRequestService {
     const session = extractSession(context);
 
     const query: Record<string, unknown> = {
-      tenantId: this.toObjectId(resolvedOrgId),
+      organizationId: this.toObjectId(resolvedOrgId),
       targetId: this.toObjectId(memberId),
       year,
       month,
@@ -218,7 +218,7 @@ export class CorrectionRequestService {
         );
       }
       const record = AttendanceRecordFactory.createForPeriod({
-        tenantId: resolvedOrgId,
+        organizationId: resolvedOrgId,
         targetModel,
         targetId: memberId,
         year,
@@ -298,7 +298,7 @@ export class CorrectionRequestService {
       }
 
       const query: Record<string, unknown> = {
-        tenantId: this.toObjectId(resolvedOrgId),
+        organizationId: this.toObjectId(resolvedOrgId),
         targetId: this.toObjectId(memberId),
         year,
         month,

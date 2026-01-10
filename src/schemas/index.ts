@@ -424,13 +424,13 @@ export const commonAttendanceFields = {
  * Recommended indexes for attendance queries
  */
 export const attendanceIndexes = [
-  { tenantId: 1, year: 1, month: 1 },
-  { tenantId: 1, targetModel: 1, year: 1, month: 1 },
+  { organizationId: 1, year: 1, month: 1 },
+  { organizationId: 1, targetModel: 1, year: 1, month: 1 },
   { targetId: 1, year: 1, month: 1 },
-  { tenantId: 1, 'checkIns.timestamp': 1 },
-  { tenantId: 1, 'attendanceStats.engagementLevel': 1 },
-  { tenantId: 1, 'attendanceStats.lastVisitedAt': 1 },
-  { tenantId: 1, 'attendanceStats.currentStreak': -1 },
+  { organizationId: 1, 'checkIns.timestamp': 1 },
+  { organizationId: 1, 'attendanceStats.engagementLevel': 1 },
+  { organizationId: 1, 'attendanceStats.lastVisitedAt': 1 },
+  { organizationId: 1, 'attendanceStats.currentStreak': -1 },
 ];
 
 /**
@@ -488,7 +488,7 @@ export function createAttendanceSchema(
 
   const schema = new Schema(
     {
-      tenantId: {
+      organizationId: {
         type: Schema.Types.ObjectId,
         ref: 'Organization',
         required: true,
@@ -608,13 +608,13 @@ export function createAttendanceSchema(
   // Indexes - only create if explicitly requested
   if (createIndexes) {
     schema.index(
-      { tenantId: 1, targetModel: 1, targetId: 1, year: 1, month: 1 },
+      { organizationId: 1, targetModel: 1, targetId: 1, year: 1, month: 1 },
       { unique: true }
     );
-    schema.index({ tenantId: 1, year: 1, month: 1 });
-    schema.index({ tenantId: 1, targetModel: 1, year: 1, month: 1 });
-    schema.index({ tenantId: 1, targetModel: 1, targetId: 1, year: -1, month: -1 });
-    schema.index({ tenantId: 1, 'checkIns.timestamp': 1 });
+    schema.index({ organizationId: 1, year: 1, month: 1 });
+    schema.index({ organizationId: 1, targetModel: 1, year: 1, month: 1 });
+    schema.index({ organizationId: 1, targetModel: 1, targetId: 1, year: -1, month: -1 });
+    schema.index({ organizationId: 1, 'checkIns.timestamp': 1 });
     schema.index({ 'checkIns.notes': 'text' });
 
     // TTL index

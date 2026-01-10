@@ -163,7 +163,7 @@ export class AnalyticsService {
       startDate.setDate(startDate.getDate() - days);
 
       const match: any = {
-        tenantId: toObjectId(organizationId),
+        organizationId: toObjectId(organizationId),
         'checkIns.timestamp': { $gte: startDate },
       };
 
@@ -227,7 +227,7 @@ export class AnalyticsService {
       const AttendanceModel = this.container.get<mongoose.Model<any>>('AttendanceModel');
 
       const match: any = {
-        tenantId: toObjectId(organizationId),
+        organizationId: toObjectId(organizationId),
         year,
         month,
       };
@@ -297,7 +297,7 @@ export class AnalyticsService {
       const result = await AttendanceModel.aggregate([
         {
           $match: {
-            tenantId: toObjectId(organizationId),
+            organizationId: toObjectId(organizationId),
             'checkIns.timestamp': { $gte: start, $lte: end },
           },
         },
@@ -371,7 +371,7 @@ export class AnalyticsService {
 
         // Get all attendance records for this member
         const records = await AttendanceModel.find({
-          tenantId: toObjectId(organizationId),
+          organizationId: toObjectId(organizationId),
           targetId: member._id,
         }).sort({ year: 1, month: 1 });
 
@@ -509,7 +509,7 @@ export class AnalyticsService {
     const checkInResult = await AttendanceModel.aggregate([
       {
         $match: {
-          tenantId: organizationId,
+          organizationId: organizationId,
           'checkIns.timestamp': { $gte: startDate, $lte: endDate },
         },
       },
